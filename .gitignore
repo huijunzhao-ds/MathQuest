@@ -1,0 +1,13 @@
+# The live API key. Never commit this — .env.example is the template that ships.
+.env
+.env.local
+
+node_modules/
+npm-debug.log*
+
+# macOS
+.DS_Store
+
+# scratch screenshots and local test output
+*.png.tmp
+/tmp/

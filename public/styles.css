@@ -1,0 +1,733 @@
+/* MathQuest — Star Explorer.
+   Deep night ground, glass surfaces, gold as the reward currency, one sky-blue
+   action colour. Every accent is checked against the ground for contrast. */
+
+:root {
+  --ground:   #16173A;
+  --ink:      #F3F5FF;
+  --ink-soft: #9AA3D4;      /* 5.0:1 on --ground */
+  --ink-dim:  #8F98CC;      /* 4.7:1 on --ground */
+  --glass:    rgba(255,255,255,.055);
+  --glass-2:  rgba(255,255,255,.085);
+  --edge:     rgba(255,255,255,.14);
+  --edge-2:   rgba(255,255,255,.24);
+
+  --sky:      #7DD3FC;
+  --sky-deep: #38BDF8;
+  --on-sky:   #071C2E;
+  --violet:   #C4B5FD;
+  --gold:     #FFC94A;
+  --gold-2:   #FFD97A;
+  --win:      #6EE7B7;
+  --win-bg:   rgba(110,231,183,.13);
+  --warn:     #FCD34D;
+  --warn-bg:  rgba(252,211,77,.12);
+
+  --world:      var(--sky);
+  --world-glow: rgba(125,211,252,.55);
+  --r: 22px;
+  --font: 'Fredoka', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif;
+  --body: 'Nunito', 'Trebuchet MS', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 16px/1.55 var(--body);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ------------------------------- the sky ---------------------------------- */
+
+.scenery { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+.scenery::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(940px 500px at 16% -8%, #2E2C6E 0%, transparent 62%),
+    radial-gradient(820px 440px at 88% 2%,  #1E3E63 0%, transparent 58%),
+    radial-gradient(700px 420px at 50% 108%, #241F52 0%, transparent 60%);
+}
+/* Namespaced: a bare `.star` here collided with the ribbon's `star` flash class
+   and made the ribbon `position: absolute` on top of the action buttons. */
+.skystar {
+  position: absolute; border-radius: 50%; background: #fff;
+  animation: twinkle 4s ease-in-out infinite;
+}
+@keyframes twinkle { 0%,100% { opacity: .28 } 50% { opacity: .9 } }
+
+.wrap { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; padding: 18px 22px 90px; }
+.hidden { display: none !important; }
+.center { text-align: center; }
+.muted  { color: var(--ink-dim); font-size: 15px; font-weight: 600; }
+.spacer { flex: 1; }
+
+/* -------------------------------- header ---------------------------------- */
+
+header.top { display: flex; align-items: center; gap: 12px; padding: 6px 2px 16px; flex-wrap: wrap; }
+.logo { width: 34px; height: 34px; display: block; }
+.logo svg { width: 100%; height: 100%; display: block; }
+.title { font-family: var(--font); font-weight: 600; font-size: 25px; letter-spacing: -.01em; }
+
+.xpwrap { display: flex; align-items: center; gap: 9px; margin-left: 10px; }
+.lvl {
+  font-family: var(--font); font-weight: 600; font-size: 14.5px; color: var(--on-sky);
+  background: var(--sky); border-radius: 999px; padding: 4px 13px;
+}
+.xpbar { width: 110px; height: 9px; border-radius: 999px; background: rgba(255,255,255,.13); overflow: hidden; }
+.xpbar > i {
+  display: block; height: 100%; width: 0; border-radius: 999px;
+  background: linear-gradient(90deg, var(--sky), var(--violet));
+  transition: width .6s cubic-bezier(.2,.9,.3,1);
+  box-shadow: 0 0 12px rgba(125,211,252,.8);
+}
+.streak {
+  display: flex; align-items: center; gap: 5px;
+  font-family: var(--font); font-weight: 600; font-size: 16px; color: var(--ink-dim);
+}
+.streak svg { width: 17px; height: 19px; display: block; }
+.streak.lit { color: var(--gold); }
+.streak.lit svg { filter: drop-shadow(0 0 7px rgba(255,201,74,.75)); animation: flicker 2.6s ease-in-out infinite; }
+@keyframes flicker { 0%,100% { transform: scale(1) } 50% { transform: scale(1.14) } }
+
+.iconbtn {
+  width: 44px; height: 44px; display: grid; place-items: center;
+  border-radius: 13px; border: 1.5px solid var(--edge); background: var(--glass);
+  color: var(--ink); cursor: pointer; transition: background .15s, transform .1s;
+}
+.iconbtn svg { width: 21px; height: 21px; display: block; }
+.iconbtn:hover  { background: var(--glass-2); }
+.iconbtn:active { transform: translateY(2px); }
+.iconbtn.off { opacity: .42; }
+
+.combobar { height: 0; overflow: visible; text-align: center; position: relative; z-index: 5; }
+.combobar span {
+  display: inline-block; opacity: 0; transform: translateY(-10px) scale(.92);
+  font-family: var(--font); font-weight: 600; font-size: 15px; letter-spacing: .04em;
+  color: var(--on-sky); background: linear-gradient(160deg, var(--gold-2), var(--gold));
+  padding: 7px 20px; border-radius: 999px; box-shadow: 0 8px 26px -8px rgba(255,201,74,.9);
+  transition: opacity .3s, transform .3s cubic-bezier(.3,1.6,.5,1);
+}
+.combobar.show span { opacity: 1; transform: translateY(0) scale(1); }
+
+/* --------------------------------- cards ---------------------------------- */
+
+.card {
+  background: var(--glass); border: 1.5px solid var(--edge); border-radius: var(--r);
+  padding: 24px 26px; margin-bottom: 16px;
+}
+.cardhead { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.card h2 {
+  margin: 0 0 12px; font-family: var(--font); font-weight: 500;
+  font-size: 12.5px; letter-spacing: .19em; text-transform: uppercase; color: var(--ink-dim);
+}
+.cardhead h2 { margin: 0; flex: 1; }
+
+.hero { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.hero .pip { width: 76px; flex-basis: 76px; }
+.herotext { flex: 1; min-width: 200px; }
+.hellokicker { font-family: var(--font); font-weight: 500; font-size: 12.5px; letter-spacing: .19em; text-transform: uppercase; color: var(--ink-dim); }
+.hellomsg { font-family: var(--font); font-weight: 500; font-size: 22px; margin-top: 4px; line-height: 1.35; }
+
+/* ------------------------------- the road --------------------------------- */
+
+.roadmap { position: relative; max-width: 620px; margin: 6px auto 2px; }
+.roadpath { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+
+.stop { position: absolute; transform: translate(-50%, -40px); text-align: center; width: 172px; }
+.stopnode {
+  width: 80px; height: 80px; margin: 0 auto; border-radius: 50%;
+  display: grid; place-items: center; position: relative; cursor: pointer;
+  background: rgba(255,255,255,.05); border: 1.5px solid var(--edge);
+  color: var(--ink-dim); transition: transform .14s, box-shadow .2s, border-color .2s;
+}
+.stopnode svg { width: 40px; height: 40px; display: block; }
+.stop.open .stopnode {
+  background: radial-gradient(circle at 50% 40%, rgba(255,255,255,.14), rgba(255,255,255,.04));
+  border-color: var(--wcol); color: var(--wcol);
+  box-shadow: 0 0 26px -4px var(--wglow), inset 0 0 20px -8px var(--wglow);
+}
+.stop.open .stopnode:hover  { transform: translateY(-4px); box-shadow: 0 0 34px -2px var(--wglow); }
+.stop.open .stopnode:active { transform: translateY(1px); }
+.stop.mastered .stopnode { border-width: 2.5px; }
+.stop.current .stopnode::after {
+  content: ""; position: absolute; inset: -8px; border-radius: 50%;
+  border: 2px solid var(--wcol); animation: ring 2s ease-out infinite;
+}
+@keyframes ring { 0% { transform: scale(.94); opacity: .85 } 100% { transform: scale(1.28); opacity: 0 } }
+
+.stoplabel { font-family: var(--font); font-weight: 600; font-size: 17px; margin-top: 11px; line-height: 1.2; }
+.stopsub   { font-size: 13.5px; font-weight: 700; color: var(--ink-dim); line-height: 1.25; margin-top: 2px; }
+.stop.locked .stoplabel { color: var(--ink-dim); }
+.stopstars { margin-top: 5px; display: flex; justify-content: center; gap: 3px; }
+.stopstars svg { width: 17px; height: 17px; display: block; color: var(--gold); }
+.star-off { opacity: .22; }
+.youflag { position: absolute; top: -34px; left: 50%; transform: translateX(-50%); width: 22px; height: 22px; color: var(--gold); animation: bob 2.6s ease-in-out infinite; }
+.youflag svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 0 8px rgba(255,201,74,.85)); }
+
+.totalstars { display: flex; align-items: center; gap: 7px; font-family: var(--font); font-weight: 600; font-size: 16px; color: var(--gold); }
+.totalstars svg { width: 18px; height: 18px; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.badge {
+  font-size: 13.5px; font-weight: 700; padding: 7px 14px; border-radius: 999px;
+  background: var(--win-bg); color: var(--win); border: 1.5px solid rgba(110,231,183,.34);
+}
+.badge.miss { background: var(--warn-bg); color: var(--warn); border-color: rgba(252,211,77,.34); }
+
+.playrow { margin: 6px 0 18px; }
+
+/* ============================ play: two columns =========================== */
+
+.playgrid { display: grid; grid-template-columns: minmax(0,1fr) 372px; gap: 20px; align-items: stretch; }
+.workcol, .petcol { min-width: 0; }
+.petcol { position: sticky; top: 14px; }
+
+.youarehere { display: flex; align-items: center; gap: 11px; margin: 0 2px 14px; flex-wrap: wrap; }
+.backbtn {
+  font: inherit; font-family: var(--font); font-size: 14.5px; font-weight: 500; color: var(--ink-soft);
+  background: var(--glass); border: 1.5px solid var(--edge); border-radius: 12px;
+  padding: 11px 15px; cursor: pointer; transition: background .15s;
+}
+.backbtn:hover { background: var(--glass-2); color: var(--ink); }
+.wherechip {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: color-mix(in srgb, var(--world) 14%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--world) 45%, transparent);
+  color: var(--world); padding: 8px 16px; border-radius: 999px;
+  font-family: var(--font); font-weight: 600; font-size: 15.5px;
+}
+.wherechip svg { width: 19px; height: 19px; display: block; }
+.wherestars { display: flex; gap: 3px; }
+.wherestars svg { width: 16px; height: 16px; color: var(--gold); }
+
+/* ---------------------------------- story --------------------------------- */
+
+.story { font-size: 24px; font-weight: 700; line-height: 1.8; color: var(--ink); text-wrap: pretty; }
+.num {
+  display: inline-block; font-family: var(--font); font-size: 25px; font-weight: 600;
+  color: var(--on-sky); background: linear-gradient(160deg, var(--gold-2), var(--gold));
+  border: none; border-radius: 12px; padding: 1px 14px; margin: 0 2px; cursor: pointer;
+  box-shadow: 0 0 22px rgba(255,201,74,.5);
+  transition: transform .12s, box-shadow .18s, filter .18s;
+}
+.num:hover  { transform: translateY(-3px); box-shadow: 0 0 30px rgba(255,201,74,.85); }
+.num:active { transform: translateY(1px); }
+.num.used {
+  background: linear-gradient(160deg, #A7F3D0, var(--win));
+  box-shadow: 0 0 22px rgba(110,231,183,.5);
+}
+.hintline { margin-top: 16px; font-size: 15px; font-weight: 700; color: var(--ink-dim); min-height: 22px; }
+.hintline b { color: var(--gold); }
+
+.dots { display: flex; gap: 6px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,.17); }
+.dot.on   { background: var(--gold); box-shadow: 0 0 10px rgba(255,201,74,.9); transform: scale(1.25); }
+.dot.done { background: var(--win); }
+
+/* -------------------------------- equation -------------------------------- */
+
+.eqrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.eqstrip {
+  flex: 1; min-width: 190px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  min-height: 80px; padding: 14px 18px;
+  background: rgba(0,0,0,.24); border: 1.5px dashed var(--edge-2); border-radius: 17px;
+}
+.eqstrip.empty::before { content: "Tap a number in the story"; color: var(--ink-dim); font-size: 15.5px; font-weight: 700; }
+.eqstrip.shake { animation: shake .4s; }
+@keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(7px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(3px)} }
+
+.chip {
+  font-family: var(--font); font-size: 30px; font-weight: 600; line-height: 1;
+  padding: 7px 17px; border-radius: 13px; color: var(--on-sky);
+  background: linear-gradient(160deg, var(--gold-2), var(--gold));
+  box-shadow: 0 0 20px rgba(255,201,74,.45);
+  animation: pop .22s cubic-bezier(.3,1.7,.5,1);
+}
+.chip.op    { background: linear-gradient(160deg, var(--violet), #A78BFA); box-shadow: 0 0 20px rgba(196,181,253,.45); }
+.chip.paren { background: rgba(255,255,255,.14); color: var(--ink); box-shadow: none; }
+.chip.flyghost { position: fixed; z-index: 90; pointer-events: none; margin: 0; animation: none; }
+@keyframes pop { from { transform: scale(.5) rotate(-6deg); opacity: 0 } to { transform: none; opacity: 1 } }
+
+.eq-eq { font-family: var(--font); font-size: 32px; color: var(--ink-dim); }
+input.answer {
+  font-family: var(--font); font-size: 32px; font-weight: 600; color: var(--ink);
+  width: 112px; padding: 11px; text-align: center;
+  background: rgba(0,0,0,.24); border: 1.5px solid var(--edge-2); border-radius: 17px;
+}
+input.answer::placeholder { color: #6B75B5; }
+input.answer:focus { outline: none; border-color: var(--sky); box-shadow: 0 0 0 3px rgba(125,211,252,.2); }
+input.answer.pulse { animation: pulseA .55s; }
+@keyframes pulseA { 50% { transform: scale(1.1); border-color: var(--win) } }
+
+.ops { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+button.op {
+  font-family: var(--font); font-size: 28px; font-weight: 600; color: var(--violet);
+  width: 66px; height: 62px; border-radius: 16px;
+  background: rgba(196,181,253,.14); border: 1.5px solid rgba(196,181,253,.32);
+  cursor: pointer; transition: background .15s, transform .09s, box-shadow .18s;
+}
+button.op:hover  { background: rgba(196,181,253,.24); box-shadow: 0 0 22px -6px rgba(196,181,253,.9); }
+button.op:active { transform: translateY(3px); }
+button.op.util {
+  font-size: 16px; width: auto; min-width: 62px; padding: 0 17px;
+  color: var(--ink-soft); background: var(--glass); border-color: var(--edge);
+}
+button.op.util:hover { background: var(--glass-2); box-shadow: none; }
+
+.actions { display: flex; gap: 11px; align-items: center; margin-top: 20px; flex-wrap: wrap; }
+button.primary {
+  font-family: var(--font); font-size: 19px; font-weight: 600; color: var(--on-sky);
+  background: linear-gradient(160deg, var(--sky), var(--sky-deep));
+  border: none; border-radius: 16px; padding: 15px 30px; cursor: pointer;
+  box-shadow: 0 10px 30px -12px rgba(56,189,248,.95);
+  transition: transform .1s, box-shadow .2s, filter .15s;
+}
+button.primary:hover  { transform: translateY(-2px); box-shadow: 0 14px 34px -12px rgba(56,189,248,1); }
+button.primary:active { transform: translateY(2px); box-shadow: 0 6px 18px -10px rgba(56,189,248,.9); }
+button.primary:disabled { background: rgba(255,255,255,.1); color: #6B75B5; box-shadow: none; cursor: not-allowed; transform: none; }
+button.primary.big { font-size: 21px; padding: 17px 40px; }
+button.ghost {
+  font-family: var(--font); font-size: 16px; font-weight: 500; color: var(--ink-soft);
+  background: var(--glass); border: 1.5px solid var(--edge); border-radius: 15px;
+  padding: 14px 20px; cursor: pointer; transition: background .15s;
+}
+button.ghost:hover  { background: var(--glass-2); color: var(--ink); }
+button.ghost:active { transform: translateY(2px); }
+
+.ribbon {
+  margin-top: 18px; padding: 14px 18px; border-radius: 15px;
+  font-family: var(--font); font-size: 17px; font-weight: 500;
+  background: var(--warn-bg); color: var(--warn); border: 1.5px solid rgba(252,211,77,.32);
+}
+.ribbon.good { background: var(--win-bg); color: var(--win); border-color: rgba(110,231,183,.34); }
+.ribbon.pop { animation: ribbonpop .5s cubic-bezier(.3,1.6,.5,1); }
+@keyframes ribbonpop { 0%{transform:scale(.92)} 55%{transform:scale(1.03)} 100%{transform:scale(1)} }
+
+.grownup { margin-top: 18px; border-top: 1.5px solid var(--edge); padding-top: 12px; }
+.grownup summary {
+  font-family: var(--font); font-size: 12.5px; font-weight: 500; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-dim); cursor: pointer; list-style: none;
+}
+.grownup summary::-webkit-details-marker { display: none; }
+.grownup summary::before { content: "▸ "; }
+.grownup[open] summary::before { content: "▾ "; }
+.grownup > div { margin-top: 10px; font-size: 13.5px; line-height: 1.65; color: var(--ink-soft); font-weight: 600; }
+.grownup b { color: var(--ink); }
+
+/* ============================ Pip and the chat ============================ */
+
+.petpanel { display: flex; flex-direction: column; gap: 15px; padding: 20px; }
+.pethead { display: flex; align-items: center; gap: 12px; }
+.petpanel .pip { width: 58px; flex-basis: 58px; }
+.petname { font-family: var(--font); font-weight: 600; font-size: 20px; line-height: 1.1; }
+.petrole { font-size: 13px; font-weight: 700; color: var(--ink-dim); margin-top: 2px; }
+
+/* Fade the scrolled-past message at the top instead of slicing it under the header. */
+.chatlog {
+  max-height: 46vh; min-height: 168px; overflow-y: auto; padding: 2px; scroll-behavior: smooth;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 22px);
+          mask-image: linear-gradient(180deg, transparent 0, #000 22px);
+}
+.chatlog::-webkit-scrollbar { width: 6px; }
+.chatlog::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 99px; }
+
+/* Rows are full-width blocks; the BUBBLE does the shrink-wrap. Roles are
+   prefixed `m-` because a bare `.pip` class here would collide with the
+   mascot's own `.pip { width: … }` and squeeze every message to 56px. */
+.msg { display: block; width: 100%; margin-bottom: 10px; animation: msgin .26s cubic-bezier(.3,1.3,.5,1); }
+.msg:last-child { margin-bottom: 2px; }
+.msg.m-kid { text-align: right; }
+@keyframes msgin { from { opacity: 0; transform: translateY(7px) } to { opacity: 1; transform: none } }
+
+.msg .b {
+  display: inline-block; max-width: 92%; text-align: left;
+  padding: 12px 15px; border-radius: 16px;
+  font-size: 15.5px; font-weight: 600; line-height: 1.55;
+}
+.msg.m-pip .b { background: rgba(255,255,255,.08); color: #DDE1FA; border-bottom-left-radius: 5px; }
+.msg.m-kid .b {
+  background: linear-gradient(160deg, var(--sky), var(--sky-deep)); color: var(--on-sky);
+  border-bottom-right-radius: 5px; font-family: var(--font); font-weight: 600; font-size: 17px;
+}
+.msg .pic { display: block; font-size: 38px; line-height: 1.15; margin-bottom: 3px; }
+.msg .note {
+  display: block; margin-top: 9px; font-size: 14px; font-weight: 700; color: var(--warn);
+  background: var(--warn-bg); border: 1.5px solid rgba(252,211,77,.3); border-radius: 11px; padding: 9px 12px;
+}
+.msg.win .b   { background: var(--win-bg); color: var(--win); border: 1.5px solid rgba(110,231,183,.3); font-weight: 700; }
+.msg.think .b { color: var(--ink-dim); font-style: italic; }
+.msg.speaking .b { box-shadow: 0 0 0 1.5px rgba(110,231,183,.5); }
+.msg.speaking .pic { animation: talkbounce .5s ease-in-out infinite alternate; }
+@keyframes talkbounce { from { transform: translateY(0) } to { transform: translateY(-5px) } }
+
+.pettools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+button.tool {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font); font-size: 14.5px; font-weight: 500; color: var(--ink);
+  background: var(--glass); border: 1.5px solid var(--edge); border-radius: 13px;
+  padding: 12px 14px; cursor: pointer; transition: background .15s, transform .09s;
+}
+button.tool svg { width: 17px; height: 17px; display: block; }
+button.tool:hover  { background: var(--glass-2); }
+button.tool:active { transform: translateY(2px); }
+button.tool.active   { background: var(--sky); border-color: var(--sky); color: var(--on-sky); }
+button.tool.speaking { border-color: rgba(110,231,183,.55); color: var(--win); }
+
+.askrow { display: flex; gap: 8px; }
+#askInput {
+  flex: 1; min-width: 0; font: inherit; font-size: 15.5px; font-weight: 700; color: var(--ink);
+  padding: 12px 14px; background: rgba(0,0,0,.24); border: 1.5px solid var(--edge-2); border-radius: 13px;
+}
+#askInput::placeholder { color: #6B75B5; }
+#askInput:focus { outline: none; border-color: var(--sky); }
+button.tool.mic { padding: 12px 14px; }
+button.tool.mic.listening { background: rgba(252,165,165,.18); border-color: rgba(252,165,165,.6); color: #FCA5A5; animation: micpulse 1s infinite; }
+@keyframes micpulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.08) } }
+
+.story.wordmode .w { cursor: pointer; border-bottom: 2px dotted rgba(196,181,253,.6); border-radius: 3px; }
+.story.wordmode .w:hover { background: rgba(196,181,253,.16); }
+.story .w.asked { background: rgba(196,181,253,.22); border-radius: 5px; }
+
+/* ==================================== Pip ================================= */
+/* Expression = one `pip-<state>` class. Modifiers (talking, listening) are
+   independent and stack. Blinking and eye-tracking run on inner elements so
+   changing expression never interrupts them. */
+
+.pip { width: 84px; flex: 0 0 84px; }
+.pip-svg { width: 100%; display: block; overflow: visible; }
+
+.pip-orb {
+  fill: #2A2B63; stroke: rgba(125,211,252,.55); stroke-width: 2;
+  transition: stroke .35s, fill .35s;
+}
+.pip-halo { fill: none; stroke: var(--sky); stroke-width: 1.5; opacity: .3; transition: opacity .35s, stroke .35s; }
+.pip-halo-2 { opacity: .16; }
+.pip-stem  { stroke: rgba(125,211,252,.5); stroke-width: 2.4; stroke-linecap: round; fill: none; transition: stroke .35s; }
+.pip-star  { fill: var(--gold); transition: fill .35s; transform-box: view-box; transform-origin: 60px 13px; }
+.pip-moon  { fill: var(--violet); opacity: .75; }
+.pip-orbit { transform-box: view-box; transform-origin: 60px 68px; animation: orbit 14s linear infinite; }
+.pip-cheek { fill: var(--gold); opacity: 0; transition: opacity .35s, fill .35s; }
+.pip-eye   { fill: var(--sky); transition: fill .35s, r .25s; }
+.pip-glint { fill: #fff; opacity: .9; }
+.pip-spark { fill: var(--gold); opacity: 0; transition: opacity .35s; }
+
+/* eye rig: outer group takes the look-at offset, inner group takes the blink */
+.pip-look { transform-box: view-box; transform: translate(var(--ex, 0px), var(--ey, 0px)); transition: transform .4s cubic-bezier(.2,.8,.3,1); }
+.pip-eyes { transform-box: view-box; transform-origin: 60px 63px; }
+.pip-eyes.blink { animation: blink .17s ease-in-out; }
+@keyframes blink { 50% { transform: scaleY(.08) } }
+
+.pip-mouth { stroke: var(--sky); fill: none; stroke-width: 3.2; stroke-linecap: round; opacity: 0; transition: opacity .2s, stroke .35s, fill .35s; }
+.m-o, .m-big { fill: var(--sky); stroke: none; }
+.pip-mouths { transform-box: view-box; transform-origin: 60px 79px; }
+
+.pip-idle    .m-smile { opacity: 1; }
+.pip-think   .m-flat  { opacity: 1; }
+.pip-curious .m-o     { opacity: 1; }
+.pip-happy   .m-big   { opacity: 1; }
+.pip-cheer   .m-big   { opacity: 1; }
+.pip-listen  .m-o     { opacity: 1; }
+.pip-oops    .m-wave  { opacity: 1; }
+
+/* ---- idle: gentle float ---- */
+.pip-idle .pip-svg { animation: bob 3.6s ease-in-out infinite; }
+
+/* ---- thinking: star spins, orbit speeds up, halo dims ---- */
+.pip-think .pip-star  { animation: spin 2.4s linear infinite; }
+.pip-think .pip-orbit { animation-duration: 4s; }
+.pip-think .pip-halo  { opacity: .12; }
+.pip-think .pip-svg   { animation: bob 2.2s ease-in-out infinite; }
+
+/* ---- curious: head tilt, gold, eyes widen ---- */
+.pip-curious .pip-svg  { transform: rotate(-8deg); transition: transform .35s cubic-bezier(.3,1.4,.5,1); }
+.pip-curious .pip-eye  { r: 7.2; fill: var(--gold); }
+.pip-curious .pip-orb  { stroke: rgba(255,201,74,.65); }
+.pip-curious .pip-halo { stroke: var(--gold); opacity: .4; }
+.pip-curious .pip-stem { stroke: rgba(255,201,74,.6); }
+.pip-curious .pip-moon { fill: var(--gold); }
+
+/* ---- pleased / celebrating: green, cheeks, sparkles ---- */
+.pip-happy .pip-eye,   .pip-cheer .pip-eye   { fill: var(--win); }
+.pip-happy .pip-mouth, .pip-cheer .pip-mouth { stroke: var(--win); fill: var(--win); }
+.pip-happy .pip-orb,   .pip-cheer .pip-orb   { stroke: rgba(110,231,183,.75); fill: #21365A; }
+.pip-happy .pip-halo,  .pip-cheer .pip-halo  { stroke: var(--win); opacity: .5; }
+.pip-happy .pip-cheek, .pip-cheer .pip-cheek { opacity: .5; fill: var(--win); }
+.pip-happy .pip-spark, .pip-cheer .pip-spark { opacity: 1; animation: sparkle 1.6s ease-in-out infinite; }
+.pip-happy .pip-svg { animation: bob 2.6s ease-in-out infinite; }
+.pip-cheer .pip-svg { animation: cheerhop .55s cubic-bezier(.3,1.6,.5,1) 2; }
+.pip-cheer .pip-orbit { animation-duration: 2.4s; }
+
+/* ---- listening: leans in, halo pulses ---- */
+.pip-listen .pip-orb  { stroke: rgba(252,165,165,.8); }
+.pip-listen .pip-eye  { fill: #FCA5A5; r: 6.6; }
+.pip-listen .pip-mouth { fill: #FCA5A5; stroke: #FCA5A5; }
+.pip-listen .pip-halo { stroke: #FCA5A5; animation: listen 1.2s ease-out infinite; }
+
+/* ---- gentle "hmm" (never a failure face) ---- */
+.pip-oops .pip-mouth { stroke: var(--gold); }
+.pip-oops .pip-eye   { fill: var(--gold); }
+.pip-oops .pip-svg   { animation: tilt 2.4s ease-in-out infinite; }
+
+/* ---- modifier: mouth moves while he is actually speaking ---- */
+.pip.talking .pip-mouths { animation: talkflap .24s ease-in-out infinite alternate; }
+.pip.talking .pip-halo   { animation: listen 1.6s ease-out infinite; }
+
+@keyframes bob      { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-5px) } }
+@keyframes spin     { to { transform: rotate(360deg) } }
+@keyframes orbit    { to { transform: rotate(360deg) } }
+@keyframes sparkle  { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
+@keyframes listen   { 0% { transform: scale(.96); opacity: .55 } 100% { transform: scale(1.1); opacity: 0 } }
+@keyframes talkflap { from { transform: scaleY(.55) } to { transform: scaleY(1.15) } }
+@keyframes tilt     { 0%,100% { transform: rotate(-4deg) } 50% { transform: rotate(4deg) } }
+@keyframes cheerhop { 0% { transform: translateY(0) scale(1) } 40% { transform: translateY(-16px) scale(1.06) } 100% { transform: translateY(0) scale(1) } }
+
+/* =============================== celebration ============================== */
+
+.fxlayer { position: fixed; inset: 0; pointer-events: none; z-index: 80; overflow: hidden; }
+.confetti { position: fixed; display: block; }
+
+.levelup { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: rgba(10,11,32,.78); backdrop-filter: blur(6px); }
+.levelup-card {
+  background: #1E2050; border: 1.5px solid var(--edge-2); border-radius: 26px;
+  padding: 36px 44px; text-align: center; box-shadow: 0 30px 80px -30px rgba(0,0,0,.9);
+  animation: popin .45s cubic-bezier(.3,1.5,.5,1);
+}
+@keyframes popin { from { transform: scale(.6) translateY(30px); opacity: 0 } to { transform: none; opacity: 1 } }
+.levelup-num {
+  width: 92px; height: 92px; margin: 0 auto 16px; border-radius: 50%;
+  display: grid; place-items: center; font-family: var(--font); font-size: 44px; font-weight: 600;
+  color: var(--on-sky); background: linear-gradient(160deg, var(--sky), var(--sky-deep));
+  box-shadow: 0 0 40px -6px rgba(56,189,248,.95);
+}
+.levelup-label { font-family: var(--font); font-size: 27px; font-weight: 600; }
+.levelup-sub { font-size: 15.5px; font-weight: 700; color: var(--ink-dim); margin: 8px 0 22px; }
+
+/* ================================ responsive ============================== */
+
+@media (max-width: 940px) {
+  .playgrid { grid-template-columns: 1fr; }
+  .petcol { position: static; }
+  .chatlog { max-height: 300px; }
+}
+@media (max-width: 580px) {
+  .wrap { padding: 12px 13px 70px; }
+  .card { padding: 18px; border-radius: 18px; }
+  .story { font-size: 20.5px; }
+  .num { font-size: 22px; }
+  button.op { width: 58px; height: 58px; font-size: 25px; }
+  .petpanel .pip { width: 50px; flex-basis: 50px; }
+  .hero .pip { width: 62px; flex-basis: 62px; }
+  .xpbar { width: 70px; }
+  .roadmap { max-width: 100%; }
+  .stop { width: 122px; }
+  .stopnode { width: 66px; height: 66px; }
+  .stopnode svg { width: 32px; height: 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+  .chatlog { scroll-behavior: auto; }
+}
+
+/* The difficulty band the child is standing on, next to the world name.
+   Kept quiet: it is orientation, not a score. */
+.whereband {
+  font-size: 12.5px; font-weight: 700; letter-spacing: .04em;
+  color: var(--ink-dim); background: rgba(255,255,255,.055);
+  border: 1.5px solid rgba(255,255,255,.09); border-radius: 999px;
+  padding: 5px 11px; white-space: nowrap;
+}
+
+/* Which difficulty level this world is on. The map is the only place that says
+   how much content exists, so it has to show the levels, not just the stops. */
+.stopband {
+  font-size: 12px; font-weight: 800; letter-spacing: .02em;
+  color: var(--wcol, var(--ink-soft)); margin-top: 5px; line-height: 1.2;
+}
+.stopband span { font-weight: 700; color: var(--ink-dim); white-space: nowrap; }
+
+/* ---- Showing the arithmetic ------------------------------------------------
+   Blocks that move. Deterministic, drawn from the equation, no model call. The
+   two colours are the two amounts being combined; a block on its way out of a
+   subtraction goes red first so "taking away" is visible as an action.        */
+.vizbox {
+  margin-top: 14px; padding: 14px 16px 16px;
+  background: rgba(255,255,255,.045);
+  border: 1.5px solid rgba(255,255,255,.09); border-radius: 18px;
+}
+.vizhead { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.vizhead h3 { margin: 0; font-size: 15px; font-weight: 800; color: var(--ink); }
+.vizhead .small { margin-left: auto; font-size: 13px; padding: 7px 13px; }
+.vizhost { display: flex; flex-direction: column; align-items: center; }
+
+.mvstage { position: relative; margin: 4px auto 2px; }
+.mvcell {
+  position: absolute; top: 0; left: 0; width: 22px; height: 22px;
+  border-radius: 6px; transform-origin: center;
+  background: var(--sky); box-shadow: inset 0 -2px 0 rgba(0,0,0,.2);
+  transition: transform .5s cubic-bezier(.34,1.28,.5,1), opacity .35s ease, background-color .3s ease;
+}
+.mv-a    { background: var(--sky); }
+.mv-b    { background: var(--win); }
+.mv-gone { background: #FCA5A5; }
+.mvgroup {
+  position: absolute; top: 0; left: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 800;
+  color: var(--ink-dim); border: 1.5px dashed rgba(255,255,255,.22);
+}
+.mvcaption {
+  margin: 10px 0 0; min-height: 2.6em; text-align: center;
+  font-size: 15.5px; font-weight: 700; line-height: 1.45; color: var(--ink);
+}
+@media (prefers-reduced-motion: reduce) { .mvcell { transition-duration: .001s; } }
+
+/* ---- One currency: the star ------------------------------------------------
+   The level number and XP bar are gone. A seven-year-old could not say what
+   they were for, and two progress systems on one screen is one too many.     */
+.starpill {
+  display: flex; align-items: center; gap: 6px; margin-left: 10px;
+  padding: 5px 12px 5px 10px; border-radius: 999px;
+  background: rgba(255,201,74,.13); border: 1.5px solid rgba(255,201,74,.28);
+}
+.starpill svg { width: 16px; height: 16px; color: var(--gold); }
+.starpill b { font-family: var(--font); font-weight: 600; font-size: 16px; color: var(--gold); }
+.starpill i { font-style: normal; font-size: 12.5px; font-weight: 700; color: var(--ink-dim); }
+
+.starkey { font-size: 13px; font-weight: 700; color: var(--ink-dim); line-height: 1.5; margin: 0 0 4px; }
+.starkey b { color: var(--gold); }
+
+/* ---- Star map: a graph, not a queue --------------------------------------- */
+.stopmeta {
+  margin-top: 7px; font-size: 12.5px; font-weight: 700; color: var(--ink-dim);
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+  line-height: 1.3; flex-wrap: wrap;
+}
+.stopmeta b { color: var(--gold); font-size: 13.5px; margin-left: 1px; }
+.stopmeta svg { width: 12px; height: 12px; color: var(--gold); }
+.stopmeta em { font-style: normal; opacity: .8; flex: 1 0 100%; }
+.stopwhy {
+  margin-top: 6px; font-size: 12px; font-weight: 700; color: var(--ink-dim);
+  line-height: 1.3; opacity: .85;
+}
+
+/* what the next star costs, on the play screen */
+.wherenext { font-size: 12.5px; font-weight: 800; color: var(--ink-dim); white-space: nowrap; }
+
+@media (max-width: 560px) {
+  .lvlnext { display: none; }
+  .worldnames h2 { font-size: 21px; }
+  .stopwhy, .stopmeta span { font-size: 11.5px; }
+}
+
+
+/* Planets need room for their captions; on a phone the map is narrower than the
+   captions want to be, so the nodes get tighter instead of overlapping. */
+@media (max-width: 560px) {
+  .stop { width: 132px; }
+  .stoplabel { font-size: 15px; }
+  .stopsub { font-size: 12px; }
+}
+
+
+/* ---- The star map: one winding road ----------------------------------------
+   Stops sit ON the road, in the order you travel them: a planet, then its
+   levels, then the next planet. Four to a row on a wide screen and two on a
+   phone, every other row running back the other way, each stop riding a shallow
+   wave so the road curves. An earlier version laid this out as a hub column
+   plus rows of cards — which reads as a table, not a journey.               */
+.roadmap { position: relative; max-width: 100%; margin: 12px auto 2px; }
+.roadpath { position: absolute; inset: 0; overflow: visible; pointer-events: none; z-index: 0; }
+.roadpath .road {
+  fill: none; stroke: rgba(255,255,255,.2); stroke-width: 8; stroke-linecap: round;
+  stroke-linejoin: round; stroke-dasharray: 0.5 14;
+}
+.roadpath .road.done {
+  stroke: var(--sky); opacity: .55; stroke-width: 6; stroke-dasharray: none;
+  filter: drop-shadow(0 0 7px rgba(125,211,252,.5));
+}
+
+.stop {
+  /* The caption hangs below the node, so centring the whole block would leave the
+     road running through the middle of the text instead of through the stop. The
+     offset is half the DOT, so the node itself sits on the road. */
+  --dothalf: 25px;
+  position: absolute; z-index: 1;
+  transform: translate(-50%, calc(-1 * var(--dothalf)));
+  width: 128px; text-align: center;
+}
+.stop.planet { --dothalf: 37px; }
+.stop .dot {
+  width: 50px; height: 50px; margin: 0 auto; display: grid; place-items: center;
+  border-radius: 50%; cursor: pointer; color: var(--wcol);
+  font-family: var(--font); font-weight: 600; font-size: 20px;
+  background: radial-gradient(circle at 50% 32%, #2A2C5E, #1E2049);
+  border: 2.5px solid rgba(255,255,255,.14);
+  transition: transform .15s ease, box-shadow .25s ease, border-color .25s ease;
+}
+.stop.planet .dot { width: 74px; height: 74px; border-width: 3px; }
+.stop.planet .dot svg { width: 36px; height: 36px; display: block; }
+.stop.level .dot svg { width: 18px; height: 18px; display: block; }
+.stop.open .dot { border-color: var(--wcol); box-shadow: 0 0 26px -6px var(--wglow); }
+.stop.open .dot:hover  { transform: translateY(-4px) scale(1.05); box-shadow: 0 0 34px -2px var(--wglow); }
+.stop.open .dot:active { transform: translateY(1px); }
+.stop.locked .dot { cursor: not-allowed; color: var(--ink-dim); border-color: var(--wcol); }
+.stop.locked { opacity: .5; }
+.stop.done .dot { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 26px -8px rgba(255,201,74,.7); }
+.stop.here .dot { border-color: #fff; box-shadow: 0 0 30px -4px var(--wglow); }
+
+.cap {
+  margin-top: 7px;
+  /* the road passes behind the captions, so they need to sit off it */
+  text-shadow: 0 0 7px var(--ground), 0 0 7px var(--ground);
+}
+.capname { display: block; font-weight: 800; font-size: 13px; line-height: 1.25; }
+.stop.planet .capname { font-family: var(--font); font-weight: 600; font-size: 16px; }
+.stop.locked .capname { color: var(--ink-dim); }
+.capstars { display: flex; justify-content: center; gap: 2px; margin-top: 3px; }
+.capstars svg { width: 13px; height: 13px; color: var(--gold); display: block; }
+.capstars.planet { gap: 3px; align-items: center; font-size: 12px; font-weight: 700; color: var(--ink-dim); }
+.capstars.planet b { color: var(--gold); font-size: 13px; }
+.capsub {
+  display: block; font-size: 11.5px; font-weight: 700; color: var(--ink-dim);
+  line-height: 1.3; margin-top: 3px;
+}
+.stop .youflag { top: -30px; }
+.stop.planet .youflag { top: -42px; }
+
+/* Only the stop you are on and the one you are working towards explain
+   themselves. Printing the same lock reason under twenty stops is noise. */
+.stop.level .capsub { display: none; }
+.stop.level.here .capsub, .stop.level.goal .capsub { display: block; }
+
+@media (max-width: 430px) {
+  .stop { width: 108px; --dothalf: 22px; }
+  .stop.planet { --dothalf: 31px; }
+  .stop .dot { width: 44px; height: 44px; font-size: 18px; }
+  .stop.planet .dot { width: 62px; height: 62px; }
+  .stop.planet .dot svg { width: 30px; height: 30px; }
+  .capname { font-size: 12px; }
+  .stop.planet .capname { font-size: 14px; }
+  .capsub { font-size: 10.5px; }
+}
+
+/* A group in a situation picture — the outline is what makes "3 on each plate"
+   visible as a group rather than a row of dots. */
+.mvgroupbox {
+  position: absolute; top: 0; left: 0;
+  border-radius: 14px; border: 2px dashed rgba(255,255,255,.22);
+  background: rgba(255,255,255,.035);
+  transition: opacity .4s ease;
+}
+
+/* Two buttons in the challenge prompt, unlike the one-button celebration. */
+.chbtns { display: flex; gap: 10px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+.chbtns button { min-width: 122px; }
+
+/* A level opened by challenge rather than worked through. Marked, not hidden —
+   the parent view should be able to tell the difference. */
+.stop.tested .dot { border-style: dashed; }
+.capskip { display: block; font-size: 11px; font-weight: 800; color: var(--ink-dim); margin-top: 2px; }

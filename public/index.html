@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>MathQuest</title>
+  <meta name="theme-color" content="#16173A">
+  <!-- Display faces are a nicety: with no network the rounded system stack takes over. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2316173A'/><path d='M16 5l3.4 7.2 7.8 1-5.7 5.5 1.4 7.8L16 22.8 9.1 26.5l1.4-7.8-5.7-5.5 7.8-1z' fill='%23FFC94A'/></svg>">
+</head>
+<body>
+
+<div class="scenery" id="scenery" aria-hidden="true"></div>
+
+<div class="wrap">
+
+  <header class="top">
+    <span class="logo">
+      <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path d="M16 3l3.6 7.6 8.3 1.1-6 5.8 1.5 8.2L16 21.9 8.6 25.7l1.5-8.2-6-5.8 8.3-1.1z" fill="#FFC94A"/>
+      </svg>
+    </span>
+    <span class="title">MathQuest</span>
+    <span class="starpill" id="starPill" title="Stars you have earned">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3 6.3 6.9.9-5 4.8 1.2 6.9L12 17.6 5.9 20.9 7.1 14l-5-4.8 6.9-.9z"/></svg>
+      <b id="starCount">0</b><i id="starMax">/ 66</i>
+    </span>
+    <span class="spacer"></span>
+    <button class="iconbtn" id="soundBtn" title="Sound on or off" aria-label="Sound on or off"></button>
+    <button class="iconbtn hidden" id="homeBtn" title="Back to the star map" aria-label="Back to the star map">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round">
+        <path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z"/><path d="M9 4v13M15 6.5v13"/>
+      </svg>
+    </button>
+  </header>
+
+  <div class="combobar" id="combobar"><span id="comboText"></span></div>
+
+  <!-- ============================ STAR MAP (home) =========================== -->
+  <section id="roadScreen">
+    <div class="card hero">
+      <div class="pip" id="pipHome"></div>
+      <div class="herotext">
+        <div class="hellokicker">Your quest</div>
+        <div class="hellomsg" id="heroMsg">Ready when you are.</div>
+      </div>
+      <button class="primary big" id="playBtn">Play ▶</button>
+    </div>
+
+    <div class="card">
+      <div class="cardhead">
+        <h2>The star map</h2>
+        <span class="totalstars" id="totalStars"></span>
+      </div>
+      <p class="starkey">Every planet branches into its own levels — pick any one that is open.
+         You get a <b>★</b> for solving on your first try with no help, so three stars means you
+         really own it.</p>
+      <div class="roadmap" id="roadmap"></div>
+    </div>
+
+    <div class="card">
+      <h2>What I noticed about your thinking</h2>
+      <div id="insights" class="muted"></div>
+      <div class="badges" id="badges"></div>
+    </div>
+  </section>
+
+  <!-- ================================ PLAY ================================= -->
+  <section id="playScreen" class="hidden">
+
+    <div class="youarehere" id="youarehere"></div>
+
+    <div class="playgrid">
+
+      <div class="workcol">
+        <div class="card" id="storyCard">
+          <div class="cardhead">
+            <h2 id="storyLabel">The story</h2>
+            <span class="dots" id="dots"></span>
+          </div>
+          <div class="story" id="story"></div>
+          <div class="hintline" id="quantHint"></div>
+        </div>
+
+        <div class="card">
+          <h2>Build the equation</h2>
+          <div class="eqrow">
+            <div class="eqstrip empty" id="eqstrip"></div>
+            <span class="eq-eq">=</span>
+            <input class="answer" id="answer" inputmode="numeric" autocomplete="off" placeholder="?">
+          </div>
+          <div class="ops" id="ops">
+            <button class="op" data-op="+">+</button>
+            <button class="op" data-op="-">−</button>
+            <button class="op" data-op="x">×</button>
+            <button class="op" data-op="/">÷</button>
+            <button class="op paren" data-op="(">(</button>
+            <button class="op paren" data-op=")">)</button>
+            <button class="op util" data-util="undo">↩</button>
+            <button class="op util" data-util="clear">Clear</button>
+          </div>
+
+          <div class="ribbon hidden" id="ribbon"><span id="ribbonText"></span></div>
+          <div class="actions" id="actions">
+            <button class="primary" id="check">Check my thinking</button>
+          </div>
+          <div class="vizbox hidden" id="vizCard">
+            <div class="vizhead">
+              <h3 id="vizTitle">Let me show you</h3>
+              <button class="ghost small" id="vizReplay">Watch again</button>
+            </div>
+            <div class="vizhost" id="vizHost"></div>
+          </div>
+          <details class="grownup hidden" id="fbDetails">
+            <summary>For grown-ups</summary>
+            <div id="fbDiag"></div>
+          </details>
+        </div>
+      </div>
+
+      <aside class="petcol">
+        <div class="card petpanel">
+          <div class="pethead">
+            <div class="pip" id="pip"></div>
+            <div>
+              <div class="petname">Pip</div>
+              <div class="petrole" id="petRole">your maths buddy</div>
+            </div>
+          </div>
+
+          <div class="chatlog" id="chatlog"></div>
+
+          <div class="pettools">
+            <button class="tool" id="readBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17.5 8.5a5 5 0 0 1 0 7"/></svg>
+              Read it
+            </button>
+            <button class="tool" id="wordBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 9a3 3 0 1 1 4 2.8c-.9.4-1 1-1 2.2"/><circle cx="12" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>
+              Word help
+            </button>
+            <button class="tool hidden" id="showBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="M3 16.5l4.5-4 3.5 3 3.5-3.5L21 16"/></svg>
+              Show me
+            </button>
+            <button class="tool" id="startBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.4"/><path d="M12 4v2.6M12 17.4V20M4 12h2.6M17.4 12H20M6.6 6.6l1.9 1.9M15.5 15.5l1.9 1.9M17.4 6.6l-1.9 1.9M8.5 15.5l-1.9 1.9"/></svg>
+              Where do I start?
+            </button>
+          </div>
+          <div class="askrow hidden" id="askrow">
+            <input id="askInput" placeholder="Ask Pip about a word…" autocomplete="off">
+            <button class="tool mic hidden" id="micBtn" title="Say it out loud" aria-label="Say it out loud">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
+            </button>
+            <button class="tool go" id="askGo">Ask</button>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+  </section>
+</div>
+
+<div class="levelup hidden" id="challenge">
+  <div class="levelup-card">
+    <div class="levelup-num">🔒</div>
+    <div class="levelup-label" id="chTitle">Already know this?</div>
+    <div class="levelup-sub" id="chSub"></div>
+    <div class="chbtns">
+      <button class="primary" id="chGo">Let me try</button>
+      <button class="ghost" id="chNo">Not yet</button>
+    </div>
+  </div>
+</div>
+
+<div class="levelup hidden" id="levelup">
+  <div class="levelup-card">
+    <div class="levelup-num" id="levelupNum">★</div>
+    <div class="levelup-label" id="levelupLabel">Level up!</div>
+    <div class="levelup-sub" id="levelupSub"></div>
+    <button class="primary" id="levelupOk">Nice!</button>
+  </div>
+</div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>
