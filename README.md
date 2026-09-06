@@ -282,6 +282,35 @@ Two things fall out of this that are worth saying out loud in the video:
   multiply. Read-aloud, word lookup and the starting ladder exist so the assessment measures
   the thing it claims to measure.
 
+## Who is playing, and accounts
+
+A shared laptop is the normal case: one child hands it to the next. Progress is keyed
+per profile, and the header has a "who is playing" picker — switch, add someone, or
+start one child fresh. Everything is local; no account is needed for any of it.
+`npm run proftest` covers the part that would hurt most if it were wrong: a browser
+holding weeks of progress under the old single key has it migrated into the first
+profile, **and the old key is left exactly where it was**, so nothing is unrecoverable.
+
+Accounts sit ON TOP of that, never underneath, and are optional:
+
+- **The account belongs to the parent**, not the child. A child is a profile with a
+  first name under a parent's email. This is the COPPA-shaped answer — collecting
+  personal information from under-13s means verifiable parental consent — and it
+  happens to be exactly the structure the parent view needs anyway.
+- **Sign-in is a magic link.** No password is created, sent or stored, so there is
+  nothing here to steal.
+- **The server holds no service_role key.** Every database call carries the parent's
+  own access token, so row level security in Postgres decides what they can reach. A
+  bug in `server.js` cannot read another family's rows because the database refuses,
+  not because this file is careful. Tested against a stand-in Supabase: one parent
+  writing to another's child is rejected.
+- **Refused writes are reported as refused.** RLS denies by matching zero rows rather
+  than erroring, so a naive `PATCH` returns 200 and looks like a save. The endpoint
+  asks for the row back and 404s when nothing came — telling a parent their child's
+  progress was saved when it was not is the worst way to lose it.
+- With `SUPABASE_URL` and `SUPABASE_ANON_KEY` unset, every account endpoint answers
+  `{enabled:false}` and the app behaves exactly as it does today.
+
 ## Two things deliberately NOT in this app
 
 **No streak counter.** There was one — a flame with a day count. It came out because

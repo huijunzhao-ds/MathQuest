@@ -2,6 +2,7 @@ import { allProblems, problemsFor, bandsFor, bandOfProblem, diagnose, CONCEPTS, 
 import { Sound, confetti, flyChip, pulse, Pip } from '/juice.js';
 import { Speech } from '/speech.js';
 import { lookupWord, START_LADDER } from '/shared/dictionary.js';
+import * as Profiles from '/shared/profiles.js';
 import { canExplain, mountExplainer, canShowSituation, mountSituation } from '/mathviz.js';
 import {
   MAP_POS, MAP_ROWS, PREREQS, bandKey, bandStat, bandStars, nextStar,
@@ -26,13 +27,20 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 const XP = { firstTry: 12, afterRetry: 7, practice: 6, clearedMisconception: 20 };
 const ORDER = Object.entries(CONCEPTS).sort((a, b) => a[1].order - b[1].order).map(([k]) => k);
 
+// Who is playing. On a shared laptop the second child must not inherit the
+// first child's road, so progress is keyed per profile. Existing progress from
+// before profiles existed is migrated into the first one, and the old key is
+// left untouched in case anything here is wrong.
+const ME = Profiles.ensureProfile('Player 1');
+function save() { Profiles.saveProgress(ME.id, P); }
+
 const blankProgress = () => ({
   xp: 0, streakDays: 0, bestStreak: 0, lastPlayed: null,
   concepts: {}, bands: null, testedOut: {}, solvedIds: [], misconceptions: {}
 });
 // migrate() folds progress saved before stars moved to difficulty levels into
 // each world's first level, so nobody gets locked out of what they already earned.
-const P = migrate(Object.assign(blankProgress(), load('mq.progress', {})));
+const P = migrate(Object.assign(blankProgress(), Profiles.loadProgress(ME.id)));
 
 const state = {
   ai: false, world: null,
@@ -47,8 +55,6 @@ const state = {
   runWrong: 0, runSlips: 0   // how this visit to a level is going
 };
 
-function load(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
-function save() { try { localStorage.setItem('mq.progress', JSON.stringify(P)); } catch {} }
 
 const conceptStat = c => (P.concepts[c] ||= { solved: 0, firstTry: 0 });
 const statFor = (c, bandId) => ((P.bands ||= {})[bandKey(c, bandId)] ||= { solved: 0, firstTry: 0 });
@@ -113,6 +119,9 @@ async function boot() {
 }
 
 function renderHeader() {
+  // Set here, not only when the picker opens — otherwise the header keeps the
+  // previous child's name while the next child is already playing.
+  $('whoName').textContent = ME.name;
   $('starCount').textContent = totalStars(P, ORDER);
   // The streak's flame needed explaining, which is the same fault as a bare
   // number: say what it counts. There is room now the flame has gone.
@@ -120,6 +129,61 @@ function renderHeader() {
   $('soundBtn').innerHTML = Sound.on ? SPEAKER_ON : SPEAKER_OFF;
   $('soundBtn').classList.toggle('off', !Sound.on);
 }
+
+/* ============================== WHO IS PLAYING ================================ */
+// Switching child must be one tap from the header. After a switch the page is
+// reloaded rather than patched: every module holds progress-derived state, and a
+// reload is the one way to be certain none of the previous child's is left behind.
+
+function renderWho() {
+  const list = Profiles.listProfiles();
+  $('whoList').innerHTML = list.map(p => {
+    const prog = Profiles.loadProgress(p.id);
+    const stars = prog && prog.bands
+      ? Object.values(prog.bands).reduce((n, b) => n + (b.solved ? 1 : 0), 0) : 0;
+    const solved = prog && prog.bands
+      ? Object.values(prog.bands).reduce((n, b) => n + (b.solved || 0), 0) : 0;
+    return `<button class="whoone ${p.id === ME.id ? 'on' : ''}" data-id="${p.id}">
+      <span class="nm">${esc(p.name)}</span>
+      <span class="st">${solved ? `${solved} solved` : 'not started'}</span>
+      ${list.length > 1 && p.id !== ME.id ? `<span class="rm" data-remove="${p.id}" title="Remove">&times;</span>` : ''}
+    </button>`;
+  }).join('');
+
+  $('whoList').querySelectorAll('.whoone').forEach(el => {
+    el.onclick = e => {
+      const rm = e.target.closest('[data-remove]');
+      if (rm) {
+        e.stopPropagation();
+        const p = Profiles.listProfiles().find(x => x.id === rm.dataset.remove);
+        if (p && confirm(`Remove ${p.name}? Their stars and progress go too.`)) {
+          Profiles.removeProfile(p.id); renderWho();
+        }
+        return;
+      }
+      if (el.dataset.id === ME.id) return;
+      Profiles.selectProfile(el.dataset.id);
+      location.reload();
+    };
+  });
+}
+
+function openWho() { renderWho(); $('whoModal').classList.remove('hidden'); }
+
+$('whoBtn').onclick = openWho;
+$('whoClose').onclick = () => $('whoModal').classList.add('hidden');
+$('whoAdd').onclick = () => {
+  const name = $('whoNew').value.trim();
+  if (!name) return $('whoNew').focus();
+  Profiles.createProfile(name);
+  location.reload();
+};
+$('whoNew').onkeydown = e => { if (e.key === 'Enter') $('whoAdd').click(); };
+$('whoReset').onclick = () => {
+  if (!confirm(`Start ${ME.name} again from the beginning? Their stars and progress are cleared.`)) return;
+  Profiles.resetProgress(ME.id);
+  location.reload();
+};
 
 /* ================================ STAR MAP =================================== */
 // ONE road, and you travel along it.

@@ -731,3 +731,44 @@ button.tool.mic.listening { background: rgba(252,165,165,.18); border-color: rgb
    the parent view should be able to tell the difference. */
 .stop.tested .dot { border-style: dashed; }
 .capskip { display: block; font-size: 11px; font-weight: 800; color: var(--ink-dim); margin-top: 2px; }
+
+/* ---- Who is playing --------------------------------------------------------
+   A shared laptop is the normal case for this app: one child hands it to the
+   next. Switching has to be one tap from the header, not buried in settings.  */
+.whopill {
+  display: flex; align-items: center; gap: 7px; margin-left: 10px;
+  padding: 5px 13px 5px 10px; border-radius: 999px; font: inherit; cursor: pointer;
+  color: var(--ink); background: rgba(255,255,255,.06);
+  border: 1.5px solid rgba(255,255,255,.11);
+  transition: border-color .18s ease, background .18s ease;
+}
+.whopill:hover { border-color: var(--sky); background: rgba(255,255,255,.1); }
+.whopill svg { width: 15px; height: 15px; color: var(--ink-soft); }
+.whopill b { font-size: 14px; font-weight: 800; max-width: 12ch; overflow: hidden;
+             text-overflow: ellipsis; white-space: nowrap; }
+
+.levelup-card.wide { max-width: 460px; }
+.whorow { display: flex; flex-direction: column; gap: 8px; margin: 16px 0 14px; }
+.whoone {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 11px 14px; border-radius: 14px; font: inherit; color: var(--ink); cursor: pointer;
+  background: rgba(255,255,255,.05); border: 1.5px solid rgba(255,255,255,.09);
+}
+.whoone:hover { border-color: var(--sky); }
+.whoone.on { border-color: var(--gold); background: rgba(255,201,74,.09); }
+.whoone .nm { font-weight: 800; font-size: 16px; flex: 1 1 auto; }
+.whoone .st { font-size: 12.5px; font-weight: 700; color: var(--ink-dim); }
+.whoone .rm {
+  border: 0; background: none; color: var(--ink-dim); font: inherit; font-size: 18px;
+  cursor: pointer; padding: 0 4px; line-height: 1;
+}
+.whoone .rm:hover { color: #FCA5A5; }
+.whoadd { display: flex; gap: 8px; }
+.whoadd input {
+  flex: 1 1 auto; min-width: 0; padding: 11px 14px; border-radius: 14px; font: inherit;
+  font-size: 15px; color: var(--ink); background: rgba(255,255,255,.06);
+  border: 1.5px solid rgba(255,255,255,.11);
+}
+.whoadd input:focus { outline: none; border-color: var(--sky); }
+.whofoot { display: flex; gap: 10px; justify-content: space-between; margin-top: 16px; flex-wrap: wrap; }
+.whonote { font-size: 12.5px; font-weight: 700; color: var(--ink-dim); line-height: 1.5; margin: 14px 0 0; }

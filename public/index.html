@@ -29,6 +29,10 @@
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3 6.3 6.9.9-5 4.8 1.2 6.9L12 17.6 5.9 20.9 7.1 14l-5-4.8 6.9-.9z"/></svg>
       <b id="starCount">0</b><i id="starMax">/ 66</i>
     </span>
+    <button class="whopill" id="whoBtn" title="Who is playing">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg>
+      <b id="whoName">Player 1</b>
+    </button>
     <span class="spacer"></span>
     <button class="iconbtn" id="soundBtn" title="Sound on or off" aria-label="Sound on or off"></button>
     <button class="iconbtn hidden" id="homeBtn" title="Back to the star map" aria-label="Back to the star map">
@@ -164,6 +168,23 @@
 
     </div>
   </section>
+</div>
+
+<div class="levelup hidden" id="whoModal">
+  <div class="levelup-card wide">
+    <div class="levelup-label">Who is playing?</div>
+    <div class="whorow" id="whoList"></div>
+    <div class="whoadd">
+      <input id="whoNew" placeholder="Add someone — first name" maxlength="24" autocomplete="off">
+      <button class="primary" id="whoAdd">Add</button>
+    </div>
+    <div class="whofoot">
+      <button class="ghost" id="whoReset">Start this one fresh</button>
+      <button class="ghost" id="whoClose">Done</button>
+    </div>
+    <p class="whonote">Each person has their own road and their own stars. Everything stays on
+       this device.</p>
+  </div>
 </div>
 
 <div class="levelup hidden" id="challenge">

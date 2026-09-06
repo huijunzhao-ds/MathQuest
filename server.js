@@ -28,6 +28,31 @@ try {
   }
 } catch { /* no .env, fine */ }
 
+/* --------------------------- accounts (optional) ---------------------------- */
+// Two public values only. There is deliberately no service_role key here: every
+// query runs as the signed-in parent, so Postgres row level security is what
+// keeps one family's data away from another's, rather than care in this file.
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+const SUPA_ON = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+
+async function supa(path, { method = 'GET', token = null, body = null, headers = {} } = {}) {
+  const res = await fetch(SUPABASE_URL + path, {
+    method,
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      authorization: `Bearer ${token || SUPABASE_ANON_KEY}`,
+      'content-type': 'application/json',
+      ...headers
+    },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  });
+  const text = await res.text();
+  let parsed = null;
+  try { parsed = text ? JSON.parse(text) : null; } catch { /* not json */ }
+  return { ok: res.ok, status: res.status, json: parsed, body: text.slice(0, 300) };
+}
+
 // The AI layer is provider-agnostic: whichever key is present wins. Add a new
 // provider by adding an adapter below — nothing else in the app knows or cares.
 const PROVIDERS = {
@@ -471,6 +496,87 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ...base, ok: false, error: String(e.message || e),
         diagnosis: 'The key is loaded but the call failed — the error above is verbatim from the provider.' });
     }
+  }
+
+  /* ------------------------------ accounts ---------------------------------- */
+  // Optional, and inert until SUPABASE_URL and SUPABASE_ANON_KEY are set. The
+  // app must still open straight into a game with no account at all — a judge
+  // following the submission link should never meet a sign-in form.
+  //
+  // Every database call is made with the PARENT'S OWN access token, so row level
+  // security in Postgres decides what they can see. The service_role key is never
+  // used and never needs to exist on this server: a bug here cannot read another
+  // family's rows, because the database itself refuses.
+
+  if (url.pathname.startsWith('/api/account')) {
+    if (!SUPA_ON) {
+      return json(res, 200, { enabled: false,
+        reason: 'Accounts are off. Set SUPABASE_URL and SUPABASE_ANON_KEY to turn them on.' });
+    }
+    const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+
+    if (url.pathname === '/api/account/status') {
+      return json(res, 200, { enabled: true, signedIn: Boolean(bearer) });
+    }
+
+    // Ask Supabase to email a one-time link. No password is ever created, sent
+    // or stored — there is nothing here for an attacker to steal.
+    if (req.method === 'POST' && url.pathname === '/api/account/link') {
+      const { email } = await readBody(req);
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(email || ''))) {
+        return json(res, 400, { error: 'That does not look like an email address.' });
+      }
+      const origin = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
+      try {
+        const r = await supa('/auth/v1/otp', { method: 'POST', body: {
+          email, create_user: true, options: { email_redirect_to: origin }
+        } });
+        if (!r.ok) return json(res, 502, { error: 'Could not send the link just now.', detail: r.body });
+        return json(res, 200, { sent: true });
+      } catch (e) { return json(res, 502, { error: 'Could not reach the sign-in service.' }); }
+    }
+
+    if (!bearer) return json(res, 401, { error: 'Sign in first.' });
+
+    if (req.method === 'GET' && url.pathname === '/api/account/children') {
+      const r = await supa('/rest/v1/child?select=id,name,progress,updated_at&order=created_at', { token: bearer });
+      return json(res, r.ok ? 200 : 502, r.ok ? { children: r.json || [] } : { error: 'Could not load.', detail: r.body });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/account/children') {
+      const { name, progress } = await readBody(req);
+      const clean = String(name || '').trim().slice(0, 24);
+      if (!clean) return json(res, 400, { error: 'A name is needed.' });
+      const r = await supa('/rest/v1/child', { method: 'POST', token: bearer,
+        headers: { Prefer: 'return=representation' },
+        body: { name: clean, progress: progress && typeof progress === 'object' ? progress : {} } });
+      return json(res, r.ok ? 200 : 502, r.ok ? { child: (r.json || [])[0] } : { error: 'Could not save.', detail: r.body });
+    }
+
+    const m = /^\/api\/account\/children\/([0-9a-f-]{36})$/.exec(url.pathname);
+    if (m && req.method === 'PUT') {
+      const { name, progress } = await readBody(req);
+      const patch = { updated_at: new Date().toISOString() };
+      if (typeof name === 'string' && name.trim()) patch.name = name.trim().slice(0, 24);
+      if (progress && typeof progress === 'object') patch.progress = progress;
+      // Ask for the row back. Row level security refuses another family's row by
+      // matching NOTHING rather than by erroring, so a 200 with an empty array is
+      // a refused write. Reporting that as success would lose a child's progress
+      // silently, which is the worst way to lose it.
+      const r = await supa(`/rest/v1/child?id=eq.${m[1]}`, { method: 'PATCH', token: bearer,
+        headers: { Prefer: 'return=representation' }, body: patch });
+      if (!r.ok) return json(res, 502, { error: 'Could not save.', detail: r.body });
+      if (!Array.isArray(r.json) || r.json.length === 0) {
+        return json(res, 404, { error: 'That child is not on this account.' });
+      }
+      return json(res, 200, { saved: true, updated_at: r.json[0].updated_at });
+    }
+    if (m && req.method === 'DELETE') {
+      const r = await supa(`/rest/v1/child?id=eq.${m[1]}`, { method: 'DELETE', token: bearer });
+      return json(res, r.ok ? 200 : 502, r.ok ? { removed: true } : { error: 'Could not remove.' });
+    }
+
+    return json(res, 404, { error: 'not found' });
   }
 
   if (url.pathname === '/api/status') {

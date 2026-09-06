@@ -15,6 +15,7 @@
     "gentest": "node test/generator.mjs",
     "viztest": "node --import ./test/dom-stub.mjs test/mathviz.mjs",
     "progtest": "node test/progress.mjs",
-    "test": "npm run gentest && npm run viztest && npm run progtest"
+    "test": "npm run gentest && npm run viztest && npm run progtest && npm run proftest",
+    "proftest": "node --import ./test/ls-stub.mjs test/profiles.mjs"
   }
 }

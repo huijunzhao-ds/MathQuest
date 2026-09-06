@@ -11,3 +11,4 @@ npm-debug.log*
 # scratch screenshots and local test output
 *.png.tmp
 /tmp/
+*.bak
