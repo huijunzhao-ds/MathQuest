@@ -222,6 +222,26 @@ is indistinguishable from correct repeated addition. Where we cannot tell them a
 the child gets the benefit of the doubt — `npm run gentest` asserts no trap ever
 collides with an accepted answer.
 
+## Running it as a public link
+
+A link anyone can open is a different thing from a laptop with one child on it.
+
+**Fair use.** The model endpoints are open to whoever finds them, and one script can
+spend a day's quota in a minute. There is a per-IP and a global budget (`RATE_PER_IP`,
+`RATE_GLOBAL`), and going over does not error — it takes the exact path the app takes
+when no key is set. A child who trips the limit gets a slightly more generic Pip; the
+person hammering it gets the rule engine. Nothing to see, nothing to spend.
+
+**The free tier and other people's children.** On Google's free tier, prompts and
+responses may be used to improve their products and may be seen by human reviewers.
+The app sends only the problem text, the tapped word and the equation built — no
+names, no account details — but if strangers' children are typing questions into it,
+that is a decision to make on purpose rather than by default. The paid tier does not
+use prompts for product improvement.
+
+**`/api/selftest` answers only to localhost**, since it names the provider, shows a
+masked key and makes a real model call on every hit.
+
 ## Where the model is allowed to be in the loop
 
 The rule engine decides *whether* an equation is right; the model decides *how to

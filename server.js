@@ -65,6 +65,50 @@ async function supa(path, { method = 'GET', token = null, body = null, headers =
   return { ok: res.ok, status: res.status, json: parsed, body: text.slice(0, 300) };
 }
 
+/* ------------------------------ fair use ------------------------------------ */
+// A public link means the model endpoints are open to anyone who finds them, and
+// one script can spend a whole day's quota in a minute.
+//
+// The nice part is that this app already knows how to work without a model: every
+// AI route falls back to the rule engine, the dictionary and the start ladder
+// when there is no key. So going over budget reuses that exact path. A child who
+// trips the limit gets a slightly more generic Pip, not an error — and the person
+// hammering it gets nothing worth having.
+
+const RATE = {
+  perIpPerMin: Number(process.env.RATE_PER_IP || 40),      // a busy child makes ~10
+  globalPerMin: Number(process.env.RATE_GLOBAL || 500)
+};
+const hits = new Map();          // ip -> number[] of timestamps
+let globalHits = [];
+
+function clientIp(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.socket.remoteAddress || 'unknown';
+}
+
+/** Is the model available for THIS request right now? */
+function aiAvailable(req) {
+  if (!API_KEY) return false;
+  const now = Date.now(), cut = now - 60000;
+  globalHits = globalHits.filter(t => t > cut);
+  if (globalHits.length >= RATE.globalPerMin) return false;
+
+  const ip = clientIp(req);
+  const mine = (hits.get(ip) || []).filter(t => t > cut);
+  if (mine.length >= RATE.perIpPerMin) { hits.set(ip, mine); return false; }
+
+  mine.push(now); hits.set(ip, mine); globalHits.push(now);
+  if (hits.size > 5000) for (const [k, v] of hits) if (!v.some(t => t > cut)) hits.delete(k);
+  return true;
+}
+
+// Declared BEFORE the provider map, which reads it. Left below, this crashed the
+// server at boot with "Cannot access 'GEMINI_FALLBACK_MODEL' before
+// initialization" — but ONLY when a Gemini key was set with no GEMINI_MODEL, so
+// a .env with both pinned never showed it and a fresh deploy would not start.
+let GEMINI_FALLBACK_MODEL = null;
+
 // The AI layer is provider-agnostic: whichever key is present wins. Add a new
 // provider by adding an adapter below — nothing else in the app knows or cares.
 const PROVIDERS = {
@@ -156,7 +200,6 @@ function toGeminiSchema(node) {
   return out;
 }
 
-let GEMINI_FALLBACK_MODEL = null;
 
 async function callGemini({ system, user, schema }, retried = false) {
   const model = retried && GEMINI_FALLBACK_MODEL ? GEMINI_FALLBACK_MODEL : (process.env.GEMINI_MODEL || GEMINI_FALLBACK_MODEL || MODEL);
@@ -477,8 +520,13 @@ const server = http.createServer(async (req, res) => {
     // model call. Harmless on a laptop, not something to leave open on a public
     // URL where anyone could read it or burn the quota — so it answers only to
     // this machine, which needs no configuration and cannot be forgotten.
+    // Behind a proxy the socket address IS loopback — Render terminates TLS and
+    // forwards over localhost — so checking it alone left this wide open on the
+    // public URL. A forwarded header means the request came through a proxy, and
+    // therefore from outside, whatever the socket says.
     const from = req.socket.remoteAddress || '';
-    if (!/^(::1|::ffff:127\.|127\.)/.test(from)) {
+    const proxied = Boolean(req.headers['x-forwarded-for'] || req.headers['x-forwarded-proto']);
+    if (proxied || !/^(::1|::ffff:127\.|127\.)/.test(from)) {
       return json(res, 404, { error: 'not found' });
     }
     const masked = API_KEY ? `${API_KEY.slice(0, 4)}…${API_KEY.slice(-4)} (${API_KEY.length} chars)` : null;
@@ -491,7 +539,7 @@ const server = http.createServer(async (req, res) => {
       keyLooksLike: masked,
       keysSeen: Object.entries(PROVIDERS).filter(([, p]) => p.key()).map(([n]) => n)
     };
-    if (!API_KEY) {
+    if (!aiAvailable(req)) {
       return json(res, 200, { ...base, ok: false,
         diagnosis: 'No provider key is loaded. Either .env is missing/misnamed, it is not in the folder you started the server from, or the key line is blank.' });
     }
@@ -547,7 +595,11 @@ const server = http.createServer(async (req, res) => {
         const r = await supa(`/auth/v1/otp?redirect_to=${encodeURIComponent(origin)}`,
           { method: 'POST', body: { email, create_user: true } });
         if (!r.ok) return json(res, 502, { error: 'Could not send the link just now.', detail: r.body });
-        return json(res, 200, { sent: true });
+        // Echo where the link will come back to. When it lands somewhere else it
+        // is almost always Supabase falling back to its Site URL because this
+        // origin is not on the Redirect URLs allowlist — and without seeing the
+        // value there is nothing to go on.
+        return json(res, 200, { sent: true, redirect: origin });
       } catch (e) { return json(res, 502, { error: 'Could not reach the sign-in service.' }); }
     }
 
@@ -630,7 +682,7 @@ const server = http.createServer(async (req, res) => {
       const problem = rawProblem ? hydrate(rawProblem) : problemById(problemId);
       if (!problem) return json(res, 400, { error: 'unknown problem' });
       const rule = diagnose(problem, built, answer, trace);
-      if (!API_KEY) return json(res, 200, rule);
+      if (!aiAvailable(req)) return json(res, 200, rule);
       // The rule engine is CERTAIN about a correct answer — the equation
       // canonicalises to the right shape and the arithmetic checks out. A model
       // call here would only rephrase "well done" while a child waits. The client
@@ -704,7 +756,7 @@ const server = http.createServer(async (req, res) => {
       const { problemId, problem: rawProblem, step = 0 } = await readBody(req);
       const i = Math.min(Number(step) || 0, START_LADDER.length - 1);
       const fallback = { ...START_LADDER[i], step: i, last: i >= START_LADDER.length - 1, source: 'rules' };
-      if (!API_KEY) return json(res, 200, fallback);
+      if (!aiAvailable(req)) return json(res, 200, fallback);
       const problem = rawProblem ? hydrate(rawProblem) : problemById(problemId);
       if (!problem) return json(res, 200, fallback);
       try {
@@ -731,7 +783,7 @@ const server = http.createServer(async (req, res) => {
       const { problem: rawProblem, problemId, message = '', intent = null,
               history = [], trace = [], startStep = 0 } = await readBody(req);
       const problem = rawProblem ? hydrate(rawProblem) : problemById(problemId);
-      if (!API_KEY || !problem) return json(res, 200, { offline: true });
+      if (!aiAvailable(req) || !problem) return json(res, 200, { offline: true });
 
       const convo = (Array.isArray(history) ? history : []).slice(-14)
         .map(m => `${m.who === 'kid' ? 'CHILD' : 'PIP'}: ${String(m.text || '').slice(0, 400)}`)

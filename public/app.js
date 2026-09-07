@@ -431,7 +431,7 @@ $('pSend').onclick = async () => {
   const r = await Cloud.sendLink(address);
   msg.className = r.ok ? 'good' : 'bad';
   msg.textContent = r.ok
-    ? `Check ${address} and open the link on this device. There is no password to remember.`
+    ? `Check ${address} and open the link on this device. It will bring you back to ${r.redirect || 'this app'}.`
     : (r.error || 'Could not send that just now.');
 };
 $('pEmail').onkeydown = e => { if (e.key === 'Enter') $('pSend').click(); };

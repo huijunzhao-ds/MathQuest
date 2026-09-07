@@ -89,7 +89,7 @@ export async function sendLink(address) {
   // A parent should not be shown a raw Postgres error, but whoever is setting
   // this up needs it — so the detail goes to the console, not the screen.
   if (!r.ok && j.detail) console.warn('[accounts] sign-in failed:', j.detail);
-  return { ok: r.ok, error: j.error };
+  return { ok: r.ok, error: j.error, redirect: j.redirect };
 }
 
 export async function whoAmI() {
