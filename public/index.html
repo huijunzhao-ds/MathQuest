@@ -66,10 +66,54 @@
       <div class="roadmap" id="roadmap"></div>
     </div>
 
+    <div class="grownlink">
+      <button id="parentsBtn">For grown-ups — sign in &amp; set up players</button>
+    </div>
+
     <div class="card">
       <h2>What I noticed about your thinking</h2>
       <div id="insights" class="muted"></div>
       <div class="badges" id="badges"></div>
+    </div>
+  </section>
+
+  <!-- ============================== GROWN-UPS =============================== -->
+  <section id="parentScreen" class="hidden">
+    <div class="card">
+      <button class="backbtn" id="parentBack">&larr; Back to the game</button>
+      <h2 class="ph1">For grown-ups</h2>
+
+      <div id="pOut">
+        <p class="pnote">Sign in to set up a player for each child, and to keep their progress
+          on every device you use. There is no password — we email you a link.</p>
+        <p class="pnote">Children never sign in. The account is yours; each child is a player
+          on it, with a first name and a school year.</p>
+        <div class="whoadd">
+          <input id="pEmail" type="email" placeholder="your@email.com" autocomplete="email">
+          <button class="primary" id="pSend">Email me a link</button>
+        </div>
+        <p class="pnote" id="pMsg"></p>
+      </div>
+
+      <div id="pIn" class="hidden">
+        <p class="pnote">Signed in as <b id="pWho"></b> <span id="pSync"></span></p>
+        <div class="players" id="pPlayers"></div>
+        <div class="whoadd">
+          <input id="pNewName" placeholder="Add a player — first name" maxlength="24" autocomplete="off">
+          <select id="pNewGrade" class="gradesel"></select>
+          <button class="primary" id="pAdd">Add</button>
+        </div>
+        <p class="pnote" id="pMsg2"></p>
+        <div class="whofoot">
+          <button class="ghost" id="pUpload">Save players on this device to my account</button>
+          <button class="ghost" id="pOff">Sign out</button>
+        </div>
+      </div>
+
+      <p class="pnote pfine">What is stored: the first name you type, a school year, and what
+        the child has solved. No birthdate, no address, nothing about the school. The school
+        year is stamped once and moves up on its own each August, so there is nothing to keep
+        editing.</p>
     </div>
   </section>
 
@@ -182,8 +226,30 @@
       <button class="ghost" id="whoReset">Start this one fresh</button>
       <button class="ghost" id="whoClose">Done</button>
     </div>
-    <p class="whonote">Each person has their own road and their own stars. Everything stays on
-       this device.</p>
+
+    <div class="grownups hidden" id="acctBox">
+      <div class="grownups-h">For grown-ups</div>
+
+      <div id="acctOut">
+        <p class="whonote" id="acctPitch">Progress is saved on this device only. Sign in and it
+          follows your children to any device — and it is how you will get the progress report.</p>
+        <div class="whoadd">
+          <input id="acctEmail" type="email" placeholder="your@email.com" autocomplete="email">
+          <button class="primary" id="acctSend">Send me a link</button>
+        </div>
+        <p class="whonote" id="acctMsg"></p>
+      </div>
+
+      <div id="acctIn" class="hidden">
+        <p class="whonote">Signed in as <b id="acctWho"></b><span id="acctSync"></span></p>
+        <div class="whofoot">
+          <button class="ghost" id="acctUpload">Save these to my account</button>
+          <button class="ghost" id="acctOff">Sign out</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="whonote">Each person has their own road and their own stars.</p>
   </div>
 </div>
 

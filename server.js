@@ -32,7 +32,19 @@ try {
 // Two public values only. There is deliberately no service_role key here: every
 // query runs as the signed-in parent, so Postgres row level security is what
 // keeps one family's data away from another's, rather than care in this file.
-const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+// Supabase's dashboard shows several URLs and the REST one is the most prominent,
+// so "https://xxx.supabase.co/rest/v1/" is the value people actually paste. Left
+// alone it sends the sign-in call to /rest/v1/auth/v1/otp, and PostgREST answers
+// with a path error that names nothing useful. Take the project root whatever
+// they paste, rather than making them debug it.
+function supabaseRoot(raw) {
+  let u = String(raw || '').trim().replace(/\/+$/, '');
+  if (!u) return '';
+  u = u.replace(/\/(rest|auth|storage|realtime|functions)\/v\d+$/i, '');
+  if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  return u.replace(/\/+$/, '');
+}
+const SUPABASE_URL = supabaseRoot(process.env.SUPABASE_URL);
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 const SUPA_ON = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
@@ -528,37 +540,66 @@ const server = http.createServer(async (req, res) => {
       }
       const origin = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
       try {
-        const r = await supa('/auth/v1/otp', { method: 'POST', body: {
-          email, create_user: true, options: { email_redirect_to: origin }
-        } });
+        // GoTrue's REST endpoint takes the redirect as a QUERY parameter. The
+        // `options.email_redirect_to` shape belongs to the JS SDK, and passing it
+        // here is silently ignored — the link then goes to the project's default
+        // Site URL instead of back to this app.
+        const r = await supa(`/auth/v1/otp?redirect_to=${encodeURIComponent(origin)}`,
+          { method: 'POST', body: { email, create_user: true } });
         if (!r.ok) return json(res, 502, { error: 'Could not send the link just now.', detail: r.body });
         return json(res, 200, { sent: true });
       } catch (e) { return json(res, 502, { error: 'Could not reach the sign-in service.' }); }
     }
 
+    // Access tokens last about an hour. Without this a parent is silently signed
+    // out mid-evening and their child's progress stops syncing without a word.
+    if (req.method === 'POST' && url.pathname === '/api/account/refresh') {
+      const { refresh_token } = await readBody(req);
+      if (!refresh_token) return json(res, 400, { error: 'No refresh token.' });
+      const r = await supa('/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST', body: { refresh_token } });
+      if (!r.ok) return json(res, 401, { error: 'Session expired. Please sign in again.' });
+      return json(res, 200, {
+        access_token: r.json.access_token,
+        refresh_token: r.json.refresh_token,
+        expires_in: r.json.expires_in,
+        email: r.json.user && r.json.user.email
+      });
+    }
+
     if (!bearer) return json(res, 401, { error: 'Sign in first.' });
 
+    if (req.method === 'GET' && url.pathname === '/api/account/me') {
+      const r = await supa('/auth/v1/user', { token: bearer });
+      if (!r.ok) return json(res, 401, { error: 'Not signed in.' });
+      return json(res, 200, { email: r.json && r.json.email });
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/account/children') {
-      const r = await supa('/rest/v1/child?select=id,name,progress,updated_at&order=created_at', { token: bearer });
+      const r = await supa('/rest/v1/child?select=id,name,grade,grade_year,progress,updated_at&order=created_at', { token: bearer });
       return json(res, r.ok ? 200 : 502, r.ok ? { children: r.json || [] } : { error: 'Could not load.', detail: r.body });
     }
 
     if (req.method === 'POST' && url.pathname === '/api/account/children') {
-      const { name, progress } = await readBody(req);
+      const { name, progress, grade, gradeYear } = await readBody(req);
       const clean = String(name || '').trim().slice(0, 24);
       if (!clean) return json(res, 400, { error: 'A name is needed.' });
+      const row = { name: clean, progress: progress && typeof progress === 'object' ? progress : {} };
+      if (Number.isFinite(Number(grade))) { row.grade = Number(grade); row.grade_year = Number(gradeYear) || null; }
       const r = await supa('/rest/v1/child', { method: 'POST', token: bearer,
-        headers: { Prefer: 'return=representation' },
-        body: { name: clean, progress: progress && typeof progress === 'object' ? progress : {} } });
+        headers: { Prefer: 'return=representation' }, body: row });
       return json(res, r.ok ? 200 : 502, r.ok ? { child: (r.json || [])[0] } : { error: 'Could not save.', detail: r.body });
     }
 
     const m = /^\/api\/account\/children\/([0-9a-f-]{36})$/.exec(url.pathname);
     if (m && req.method === 'PUT') {
-      const { name, progress } = await readBody(req);
+      const { name, progress, grade, gradeYear } = await readBody(req);
       const patch = { updated_at: new Date().toISOString() };
       if (typeof name === 'string' && name.trim()) patch.name = name.trim().slice(0, 24);
       if (progress && typeof progress === 'object') patch.progress = progress;
+      // null clears the school year; undefined leaves it alone.
+      if (grade === null) { patch.grade = null; patch.grade_year = null; }
+      else if (Number.isFinite(Number(grade))) { patch.grade = Number(grade); patch.grade_year = Number(gradeYear) || null; }
       // Ask for the row back. Row level security refuses another family's row by
       // matching NOTHING rather than by erroring, so a 200 with an empty array is
       // a refused write. Reporting that as success would lose a child's progress
@@ -758,6 +799,10 @@ server.on('error', err => {
 
 // 0.0.0.0 so a container platform can reach it — the default binding works on a
 // laptop and silently fails to accept traffic on some hosts.
+if (process.env.SUPABASE_URL && SUPABASE_URL !== String(process.env.SUPABASE_URL).replace(/\/+$/, '')) {
+  console.log(`  Accounts:  using ${SUPABASE_URL} (trimmed the API path off SUPABASE_URL)`);
+}
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  MathQuest  →  http://localhost:${PORT}`);
   if (API_KEY) {

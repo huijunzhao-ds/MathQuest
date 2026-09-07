@@ -772,3 +772,63 @@ button.tool.mic.listening { background: rgba(252,165,165,.18); border-color: rgb
 .whoadd input:focus { outline: none; border-color: var(--sky); }
 .whofoot { display: flex; gap: 10px; justify-content: space-between; margin-top: 16px; flex-wrap: wrap; }
 .whonote { font-size: 12.5px; font-weight: 700; color: var(--ink-dim); line-height: 1.5; margin: 14px 0 0; }
+
+/* The account lives inside the "who is playing" panel, under a grown-ups line —
+   it is a parent's concern, and no child should have to walk past it to play. */
+.grownups {
+  margin-top: 18px; padding-top: 16px;
+  border-top: 1.5px solid rgba(255,255,255,.09);
+}
+.grownups-h {
+  font-size: 11.5px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-dim); margin-bottom: 10px;
+}
+.grownups .whonote { margin: 0 0 10px; }
+.grownups .whofoot { margin-top: 12px; }
+#acctMsg:empty { display: none; }
+#acctMsg.bad { color: #FCA5A5; }
+#acctMsg.good { color: var(--win); }
+#acctSync { color: var(--ink-dim); font-weight: 700; }
+
+/* ---- The grown-ups area ----------------------------------------------------
+   A real page, reachable in one tap, but never in the way: the game opens on
+   the map and a child is not asked to sign in to anything.                    */
+.grownlink { text-align: center; margin: 4px 0 14px; }
+.grownlink button {
+  font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+  color: var(--ink-dim); background: none; border: 0; padding: 8px 12px;
+  border-bottom: 1.5px solid transparent;
+}
+.grownlink button:hover { color: var(--ink); border-bottom-color: var(--sky); }
+
+.ph1 { margin: 14px 0 16px; }
+.pnote { font-size: 14.5px; font-weight: 600; color: var(--ink-soft); line-height: 1.6; margin: 0 0 12px; }
+.pnote b { color: var(--ink); }
+.pfine { font-size: 12.5px; color: var(--ink-dim); margin-top: 20px; padding-top: 16px;
+         border-top: 1.5px solid rgba(255,255,255,.08); }
+#pMsg:empty, #pMsg2:empty { display: none; }
+#pMsg.bad, #pMsg2.bad { color: #FCA5A5; }
+#pMsg.good, #pMsg2.good { color: var(--win); }
+#pSync { color: var(--ink-dim); font-weight: 700; font-size: 13px; }
+
+.players { display: flex; flex-direction: column; gap: 10px; margin: 16px 0 14px; }
+.player {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 13px 15px; border-radius: 16px;
+  background: rgba(255,255,255,.05); border: 1.5px solid rgba(255,255,255,.09);
+}
+.player .pname {
+  flex: 1 1 140px; min-width: 0; font: inherit; font-size: 16px; font-weight: 800; color: var(--ink);
+  background: none; border: 0; border-bottom: 1.5px solid transparent; padding: 2px 0;
+}
+.player .pname:focus { outline: none; border-bottom-color: var(--sky); }
+.player .pstat { font-size: 12.5px; font-weight: 700; color: var(--ink-dim); }
+.gradesel {
+  font: inherit; font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer;
+  background: rgba(255,255,255,.07); border: 1.5px solid rgba(255,255,255,.11);
+  border-radius: 12px; padding: 9px 11px;
+}
+.gradesel:focus { outline: none; border-color: var(--sky); }
+.player .prm { border: 0; background: none; color: var(--ink-dim); font: inherit; font-size: 19px;
+               cursor: pointer; padding: 0 4px; line-height: 1; }
+.player .prm:hover { color: #FCA5A5; }

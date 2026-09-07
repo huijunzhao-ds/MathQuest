@@ -3,6 +3,7 @@ import { Sound, confetti, flyChip, pulse, Pip } from '/juice.js';
 import { Speech } from '/speech.js';
 import { lookupWord, START_LADDER } from '/shared/dictionary.js';
 import * as Profiles from '/shared/profiles.js';
+import * as Cloud from '/cloud.js';
 import { canExplain, mountExplainer, canShowSituation, mountSituation } from '/mathviz.js';
 import {
   MAP_POS, MAP_ROWS, PREREQS, bandKey, bandStat, bandStars, nextStar,
@@ -31,8 +32,28 @@ const ORDER = Object.entries(CONCEPTS).sort((a, b) => a[1].order - b[1].order).m
 // first child's road, so progress is keyed per profile. Existing progress from
 // before profiles existed is migrated into the first one, and the old key is
 // left untouched in case anything here is wrong.
+// A magic link arrives as a URL fragment. Consume it before anything else looks
+// at the session, and scrub it from the address bar — a token in a URL gets
+// copied, pasted and shared.
+const arrivedByLink = Cloud.captureLinkFromUrl();
+// Signing in can trigger one reload (adopting or pruning profiles changes what
+// this page already read). Without remembering why we were here, the parent
+// clicks a link in their email and lands on the star map wondering if it worked.
+const WANT_PARENTS = 'mq.gotoParents';
+if (arrivedByLink) { try { sessionStorage.setItem(WANT_PARENTS, '1'); } catch {} }
+function wantedParents() {
+  try {
+    if (sessionStorage.getItem(WANT_PARENTS) !== '1') return false;
+    sessionStorage.removeItem(WANT_PARENTS);
+    return true;
+  } catch { return false; }
+}
 const ME = Profiles.ensureProfile('Player 1');
-function save() { Profiles.saveProgress(ME.id, P); }
+function save() {
+  P.updatedAt = Date.now();
+  Profiles.saveProgress(ME.id, P);
+  cloudPush();
+}
 
 const blankProgress = () => ({
   xp: 0, streakDays: 0, bestStreak: 0, lastPlayed: null,
@@ -116,6 +137,30 @@ async function boot() {
   };
   try { state.ai = (await (await fetch('/api/status')).json()).ai; } catch {}
   showRoad();
+
+  // Anything to do with the account happens AFTER the game is on screen, and
+  // never blocks it. A parent signing in on a new phone gets their children
+  // pulled down; a device that has been away gets the newer progress. If any of
+  // it fails, the child is already playing and will not notice.
+  if (Cloud.signedIn()) {
+    try {
+      const { added, touchedActive } = await cloudMergeDown();
+      // A device seeing this account for the first time has an empty placeholder
+      // profile from boot. Once the real children are down, it is a duplicate.
+      const pruned = added ? Profiles.pruneAuto() : 0;
+      // Either the child on screen was replaced by the account's copy, or the
+      // profile list changed underneath us. `ME` and `P` were both read before
+      // any of that, so the honest move is one reload rather than patching
+      // half the app's state and hoping. It cannot loop: after the reload there
+      // is nothing left to adopt or prune.
+      if (pruned || touchedActive) { location.reload(); return; }
+      await cloudPull();
+      if (added) renderRoad();
+    } catch { /* the game does not depend on this */ }
+  }
+  // They clicked a link in their email; show them the page that link was for,
+  // even if a reload happened in between.
+  if (wantedParents()) showParents();
 }
 
 function renderHeader() {
@@ -168,7 +213,252 @@ function renderWho() {
   });
 }
 
-function openWho() { renderWho(); $('whoModal').classList.remove('hidden'); }
+/* ------------------------- the parent's account ----------------------------- */
+// Optional throughout. Every path here fails soft: no account, no wifi, or an
+// expired token all leave the game exactly as it is on this device.
+
+let syncState = '';          // '', 'saving', 'saved', 'failed'
+let pushTimer = null;
+
+function renderSync() {
+  const el = $('acctSync');
+  if (!el) return;
+  el.textContent = syncState === 'saving' ? ' · saving…'
+    : syncState === 'saved' ? ' · progress saved'
+    : syncState === 'failed' ? ' · could not save — still safe on this device'
+    : '';
+  el.className = syncState === 'failed' ? 'bad' : '';
+}
+
+function cloudPush() {
+  if (!Cloud.signedIn() || !ME.remote) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    syncState = 'saving'; renderSync();
+    const ok = await Cloud.saveChild(ME.remote, { progress: P });
+    // A failed save is never reported as a save. The local copy is untouched
+    // either way, so nothing is lost — but the parent gets told.
+    syncState = ok ? 'saved' : 'failed'; renderSync();
+  }, 1500);
+}
+
+/** Take the account's copy only if it is genuinely newer than this device's. */
+async function cloudPull() {
+  if (!Cloud.signedIn() || !ME.remote) return;
+  const kids = await Cloud.children();
+  if (!kids) return;                                  // could not tell — leave local alone
+  const mine = kids.find(k => k.id === ME.remote);
+  if (!mine || !mine.progress) return;
+  const cloudAt = Date.parse(mine.updated_at || 0) || 0;
+  if (cloudAt <= (P.updatedAt || 0)) return;
+  for (const k of Object.keys(P)) delete P[k];
+  Object.assign(P, migrate(Object.assign(blankProgress(), mine.progress)));
+  Profiles.saveProgress(ME.id, P);                    // not save(): do not bump the clock
+  renderHeader();
+  if (!$('roadScreen').classList.contains('hidden')) renderRoad();
+}
+
+/** Children on the account that this device has never seen — a new phone, say. */
+/** Returns { added, touchedActive } — the caller needs to know if THIS child changed. */
+async function cloudMergeDown() {
+  const kids = await Cloud.children();
+  if (!kids) return { added: 0, touchedActive: false };
+  const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+  let added = 0, touchedActive = false;
+  for (const k of kids) {
+    const local = Profiles.listProfiles();
+    if (local.some(p => p.remote === k.id)) continue;
+
+    // ADOPT before creating. A parent signing in on a laptop that already has
+    // "Ava" on it means the same child, not a second one — creating another
+    // would leave two Avas on the device and, after the next upload, two on the
+    // account. Match by name, then keep whichever copy is newer.
+    const twin = local.find(p => !p.remote && same(p.name, k.name));
+    if (twin) {
+      Profiles.linkProfile(twin.id, k.id);
+      const mine = Profiles.loadProgress(twin.id) || {};
+      const cloudAt = Date.parse(k.updated_at || 0) || 0;
+      if (cloudAt > (mine.updatedAt || 0)) {
+        Profiles.saveProgress(twin.id, k.progress || {});
+        if (twin.id === ME.id) touchedActive = true;
+      }
+      continue;
+    }
+
+    const p = Profiles.createProfile(k.name, { activate: false });
+    Profiles.linkProfile(p.id, k.id);
+    Profiles.saveProgress(p.id, k.progress || {});
+    added++;
+  }
+  return { added, touchedActive };
+}
+
+async function renderAccount() {
+  const box = $('acctBox');
+  if (!(await Cloud.enabled())) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  const inn = Cloud.signedIn();
+  $('acctIn').classList.toggle('hidden', !inn);
+  $('acctOut').classList.toggle('hidden', inn);
+  if (inn) {
+    $('acctWho').textContent = Cloud.email() || 'your account';
+    if (!Cloud.email()) Cloud.whoAmI().then(() => { $('acctWho').textContent = Cloud.email() || 'your account'; });
+    const unlinked = Profiles.listProfiles().filter(p => !p.remote).length;
+    $('acctUpload').textContent = unlinked
+      ? `Save ${unlinked === 1 ? 'this one' : `these ${unlinked}`} to my account`
+      : 'Everything is saved to your account';
+    $('acctUpload').disabled = !unlinked;
+    renderSync();
+  }
+}
+
+$('acctSend').onclick = async () => {
+  const address = $('acctEmail').value.trim();
+  const msg = $('acctMsg');
+  msg.className = ''; msg.textContent = 'Sending…';
+  const r = await Cloud.sendLink(address);
+  msg.className = r.ok ? 'good' : 'bad';
+  msg.textContent = r.ok
+    ? `Check ${address}. The link signs you in on this device — no password to remember.`
+    : (r.error || 'Could not send that just now.');
+};
+$('acctEmail').onkeydown = e => { if (e.key === 'Enter') $('acctSend').click(); };
+
+$('acctUpload').onclick = async () => {
+  const msg = $('acctMsg'); msg.className = ''; msg.textContent = 'Saving…';
+  let ok = 0, failed = 0;
+  for (const p of Profiles.listProfiles()) {
+    if (p.remote) continue;
+    const made = await Cloud.addChild(p.name, Profiles.loadProgress(p.id));
+    if (made) { Profiles.linkProfile(p.id, made.id); ok++; } else failed++;
+  }
+  msg.className = failed ? 'bad' : 'good';
+  msg.textContent = failed
+    ? `Saved ${ok}, but ${failed} did not go up. Everything is still safe on this device.`
+    : 'Saved. Sign in on another device and they will be there.';
+  if (ok) location.reload();
+};
+
+$('acctOff').onclick = () => {
+  if (!confirm('Sign out? Every child stays on this device — you are just disconnecting the account.')) return;
+  Cloud.signOut();
+  Profiles.unlinkAll();
+  location.reload();
+};
+
+function openWho() { renderWho(); renderAccount(); $('whoModal').classList.remove('hidden'); }
+
+/* ---------------------------- the grown-ups page ---------------------------- */
+
+const gradeOptions = (sel = '') =>
+  `<option value="">School year…</option>` +
+  Profiles.GRADES.map(g => `<option value="${g.n}" ${String(sel) === String(g.n) ? 'selected' : ''}>${g.label}</option>`).join('');
+
+function showParents() {
+  Speech.stop();
+  $('roadScreen').classList.add('hidden');
+  $('playScreen').classList.add('hidden');
+  $('whoModal').classList.add('hidden');
+  $('parentScreen').classList.remove('hidden');
+  $('homeBtn').classList.remove('hidden');
+  renderParents();
+}
+
+async function renderParents() {
+  const on = await Cloud.enabled();
+  const inn = on && Cloud.signedIn();
+  $('pOut').classList.toggle('hidden', inn);
+  $('pIn').classList.toggle('hidden', !inn);
+  if (!on) {
+    $('pMsg').className = '';
+    $('pMsg').textContent = 'Accounts are not switched on for this copy of the app. '
+      + 'Players still work — they are kept on this device.';
+    $('pEmail').disabled = $('pSend').disabled = true;
+  }
+  $('pNewGrade').innerHTML = gradeOptions();
+  if (!inn) return;
+
+  $('pWho').textContent = Cloud.email() || 'your account';
+  if (!Cloud.email()) Cloud.whoAmI().then(() => { $('pWho').textContent = Cloud.email() || 'your account'; });
+
+  const list = Profiles.listProfiles();
+  $('pPlayers').innerHTML = list.map(p => {
+    const prog = Profiles.loadProgress(p.id) || {};
+    const solved = prog.bands ? Object.values(prog.bands).reduce((n, b) => n + (b.solved || 0), 0) : 0;
+    const g = Profiles.currentGrade(p);
+    return `<div class="player" data-id="${p.id}">
+      <input class="pname" value="${esc(p.name)}" maxlength="24" aria-label="Name">
+      <select class="gradesel" aria-label="School year">${gradeOptions(g === null ? '' : g)}</select>
+      <span class="pstat">${solved ? `${solved} solved` : 'not started'}${p.remote ? '' : ' · on this device only'}</span>
+      ${list.length > 1 ? '<button class="prm" title="Remove">&times;</button>' : ''}
+    </div>`;
+  }).join('');
+
+  $('pPlayers').querySelectorAll('.player').forEach(el => {
+    const id = el.dataset.id;
+    const push = async () => {
+      const p = Profiles.listProfiles().find(x => x.id === id);
+      if (p && p.remote) await Cloud.saveChild(p.remote, { name: p.name, grade: p.grade, gradeYear: p.gradeYear });
+    };
+    el.querySelector('.pname').onchange = e => { Profiles.updateProfile(id, { name: e.target.value }); push(); renderHeader(); };
+    el.querySelector('.gradesel').onchange = e => {
+      Profiles.updateProfile(id, { grade: e.target.value === '' ? null : Number(e.target.value) });
+      push();
+    };
+    const rm = el.querySelector('.prm');
+    if (rm) rm.onclick = async () => {
+      const p = Profiles.listProfiles().find(x => x.id === id);
+      if (!p || !confirm(`Remove ${p.name}? Their stars and progress go too.`)) return;
+      if (p.remote) await Cloud.removeChild(p.remote);
+      Profiles.removeProfile(id);
+      if (id === ME.id) return location.reload();
+      renderParents();
+    };
+  });
+
+  $('pUpload').textContent = list.some(p => !p.remote)
+    ? 'Save players on this device to my account' : 'All players are on your account';
+  $('pUpload').disabled = !list.some(p => !p.remote);
+  renderSync();
+}
+
+$('parentsBtn').onclick = showParents;
+$('parentBack').onclick = showRoad;
+
+$('pSend').onclick = async () => {
+  const address = $('pEmail').value.trim();
+  const msg = $('pMsg'); msg.className = ''; msg.textContent = 'Sending…';
+  const r = await Cloud.sendLink(address);
+  msg.className = r.ok ? 'good' : 'bad';
+  msg.textContent = r.ok
+    ? `Check ${address} and open the link on this device. There is no password to remember.`
+    : (r.error || 'Could not send that just now.');
+};
+$('pEmail').onkeydown = e => { if (e.key === 'Enter') $('pSend').click(); };
+
+$('pAdd').onclick = async () => {
+  const name = $('pNewName').value.trim();
+  const grade = $('pNewGrade').value;
+  const msg = $('pMsg2'); msg.className = '';
+  if (!name) { msg.className = 'bad'; msg.textContent = 'A first name is needed.'; return $('pNewName').focus(); }
+  // Two players called Ava is almost always a slip, and it is confusing to undo
+  // once both have progress. Ask rather than refuse — siblings do share names.
+  const clash = Profiles.listProfiles().some(x => x.name.trim().toLowerCase() === name.toLowerCase());
+  if (clash && !confirm(`There is already a player called ${name}. Add another one?`)) return;
+  const p = Profiles.createProfile(name, { activate: false });
+  if (grade !== '') Profiles.updateProfile(p.id, { grade: Number(grade) });
+  const made = await Cloud.addChild(name, {});
+  if (made) Profiles.linkProfile(p.id, made.id);
+  msg.className = made ? 'good' : 'bad';
+  msg.textContent = made ? `${name} is ready to play.`
+    : `${name} is ready on this device, but could not be saved to your account.`;
+  $('pNewName').value = ''; $('pNewGrade').value = '';
+  renderParents();
+};
+$('pNewName').onkeydown = e => { if (e.key === 'Enter') $('pAdd').click(); };
+
+$('pUpload').onclick = () => $('acctUpload').onclick();
+$('pOff').onclick = () => $('acctOff').onclick();
 
 $('whoBtn').onclick = openWho;
 $('whoClose').onclick = () => $('whoModal').classList.add('hidden');
@@ -203,6 +493,7 @@ const TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 function showRoad() {
   Speech.stop();
   $('playScreen').classList.add('hidden');
+  $('parentScreen').classList.add('hidden');
   $('roadScreen').classList.remove('hidden');
   $('homeBtn').classList.add('hidden');
   document.documentElement.style.removeProperty('--world');

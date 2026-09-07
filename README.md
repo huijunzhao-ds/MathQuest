@@ -309,7 +309,26 @@ Accounts sit ON TOP of that, never underneath, and are optional:
   asks for the row back and 404s when nothing came — telling a parent their child's
   progress was saved when it was not is the worst way to lose it.
 - With `SUPABASE_URL` and `SUPABASE_ANON_KEY` unset, every account endpoint answers
-  `{enabled:false}` and the app behaves exactly as it does today.
+  `{enabled:false}`, the grown-ups panel hides itself, and the app behaves exactly as
+  it does with no account at all.
+- **The token never stays in the address bar.** A magic link arrives as a URL
+  fragment; it is read once, stored, and scrubbed with `replaceState`, because a URL
+  with a session token in it gets copied, pasted and shared.
+- **Adopt before creating.** A parent signing in on a laptop that already has "Ava"
+  on it means the same child, not a second one. Merging matches an unlinked local
+  profile by name and links it, keeping whichever copy is newer. Without this you get
+  two Avas on the device and, after the next upload, two on the account.
+- **Placeholder profiles are pruned.** A device seeing the account for the first time
+  made an empty "Player 1" at boot, before the real children arrived. It is marked
+  `auto` when created and dropped once a real child replaces it — never when it has
+  been played, and never if it is the last one.
+- Sync is last-write-wins on a timestamp, which suits one child on one device at a
+  time. It is not a merge, and two devices played offline in parallel will lose the
+  older run.
+
+The whole flow is tested against a stand-in Supabase (`fakesupa.mjs`): send a link,
+return through it, upload local children, then sign in on a second browser with
+nothing on it and get the same child with the same stars.
 
 ## Two things deliberately NOT in this app
 
