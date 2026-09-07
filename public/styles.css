@@ -832,3 +832,38 @@ button.tool.mic.listening { background: rgba(252,165,165,.18); border-color: rgb
 .player .prm { border: 0; background: none; color: var(--ink-dim); font: inherit; font-size: 19px;
                cursor: pointer; padding: 0 4px; line-height: 1; }
 .player .prm:hover { color: #FCA5A5; }
+
+/* Google sign-in. Sends no email, so it is the way in when the email sender is
+   rate-limited — which on Supabase's built-in sender is two an hour. */
+.googlebtn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 13px 18px; border-radius: 14px; cursor: pointer;
+  font: inherit; font-size: 15.5px; font-weight: 700; color: #1F1F1F;
+  background: #fff; border: 1.5px solid rgba(255,255,255,.2);
+  transition: transform .14s ease, box-shadow .2s ease;
+}
+.googlebtn:hover { transform: translateY(-1px); box-shadow: 0 8px 22px -10px rgba(0,0,0,.6); }
+.googlebtn:active { transform: translateY(1px); }
+.googlebtn svg { width: 19px; height: 19px; display: block; }
+.orline { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
+.orline::before, .orline::after {
+  content: ''; flex: 1 1 auto; height: 1.5px; background: rgba(255,255,255,.1);
+}
+.orline span { font-size: 12px; font-weight: 800; letter-spacing: .1em;
+               text-transform: uppercase; color: var(--ink-dim); }
+
+/* Email + password. Kept plain: this is a form a parent fills in once. */
+.authform { display: flex; flex-direction: column; gap: 10px; }
+.authform input {
+  width: 100%; padding: 12px 15px; border-radius: 14px; font: inherit; font-size: 15px;
+  color: var(--ink); background: rgba(255,255,255,.06);
+  border: 1.5px solid rgba(255,255,255,.11);
+}
+.authform input:focus { outline: none; border-color: var(--sky); }
+.authbtns { display: flex; gap: 10px; flex-wrap: wrap; }
+.authbtns button { flex: 1 1 auto; min-width: 130px; }
+.linkish {
+  font: inherit; font-size: 13.5px; font-weight: 700; color: var(--ink-dim);
+  background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
+}
+.linkish:hover { color: var(--sky); }

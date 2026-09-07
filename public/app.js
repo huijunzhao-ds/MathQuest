@@ -300,6 +300,8 @@ async function renderAccount() {
   const inn = Cloud.signedIn();
   $('acctIn').classList.toggle('hidden', !inn);
   $('acctOut').classList.toggle('hidden', inn);
+  if (!inn) $('acctPitch').textContent = 'Progress is saved on this device only. Sign in on the '
+    + 'grown-ups page and it follows your children to any device.';
   if (inn) {
     $('acctWho').textContent = Cloud.email() || 'your account';
     if (!Cloud.email()) Cloud.whoAmI().then(() => { $('acctWho').textContent = Cloud.email() || 'your account'; });
@@ -365,8 +367,11 @@ function showParents() {
 }
 
 async function renderParents() {
-  const on = await Cloud.enabled();
+  const cfg = await Cloud.config();
+  const on = cfg.enabled;
   const inn = on && Cloud.signedIn();
+  $('pGoogle').classList.toggle('hidden', !(on && cfg.google));
+  $('pOr').classList.toggle('hidden', !(on && cfg.google));
   $('pOut').classList.toggle('hidden', inn);
   $('pIn').classList.toggle('hidden', !inn);
   if (!on) {
@@ -422,10 +427,27 @@ async function renderParents() {
   renderSync();
 }
 
+$('pGoogle').onclick = () => Cloud.signInWithGoogle();
 $('parentsBtn').onclick = showParents;
 $('parentBack').onclick = showRoad;
 
-$('pSend').onclick = async () => {
+async function useCredentials(kind) {
+  const email = $('pEmail').value.trim(), pass = $('pPass').value;
+  const msg = $('pMsg'); msg.className = ''; msg.textContent = 'One moment…';
+  const r = kind === 'up' ? await Cloud.signUp(email, pass) : await Cloud.signIn(email, pass);
+  if (!r.ok) { msg.className = 'bad'; msg.textContent = r.error; return; }
+  // Signing in changes which children exist, so start clean rather than patching.
+  try { sessionStorage.setItem('mq.gotoParents', '1'); } catch {}
+  location.reload();
+}
+$('pSignIn').onclick = () => useCredentials('in');
+$('pSignUp').onclick = () => useCredentials('up');
+$('pPass').onkeydown = e => { if (e.key === 'Enter') $('pSignIn').click(); };
+$('pEmail').onkeydown = e => { if (e.key === 'Enter') $('pPass').focus(); };
+
+// The emailed link still exists — it is just no longer the front door, because
+// Supabase's built-in sender allows two an hour.
+$('pLinkInstead').onclick = async () => {
   const address = $('pEmail').value.trim();
   const msg = $('pMsg'); msg.className = ''; msg.textContent = 'Sending…';
   const r = await Cloud.sendLink(address);
@@ -434,7 +456,6 @@ $('pSend').onclick = async () => {
     ? `Check ${address} and open the link on this device. It will bring you back to ${r.redirect || 'this app'}.`
     : (r.error || 'Could not send that just now.');
 };
-$('pEmail').onkeydown = e => { if (e.key === 'Enter') $('pSend').click(); };
 
 $('pAdd').onclick = async () => {
   const name = $('pNewName').value.trim();

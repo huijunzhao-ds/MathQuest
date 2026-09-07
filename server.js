@@ -47,6 +47,10 @@ function supabaseRoot(raw) {
 const SUPABASE_URL = supabaseRoot(process.env.SUPABASE_URL);
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 const SUPA_ON = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+// Google sign-in needs setting up in TWO places (Supabase and Google Cloud), so
+// it is behind a flag rather than auto-detected: a button that leads to an error
+// page is worse than no button.
+const AUTH_GOOGLE = SUPA_ON && process.env.AUTH_GOOGLE === '1';
 
 async function supa(path, { method = 'GET', token = null, body = null, headers = {} } = {}) {
   const res = await fetch(SUPABASE_URL + path, {
@@ -576,7 +580,66 @@ const server = http.createServer(async (req, res) => {
     const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
 
     if (url.pathname === '/api/account/status') {
-      return json(res, 200, { enabled: true, signedIn: Boolean(bearer) });
+      return json(res, 200, { enabled: true, google: AUTH_GOOGLE, password: true, signedIn: Boolean(bearer) });
+    }
+
+    // OAuth is a browser redirect, not a server call: hand the browser straight to
+    // Supabase, which does the Google handshake and sends it back here with the
+    // same #access_token fragment a magic link uses. No email, so no rate limit.
+    if (req.method === 'GET' && url.pathname === '/api/account/oauth/google') {
+      if (!AUTH_GOOGLE) return json(res, 404, { error: 'Google sign-in is not switched on.' });
+      const origin = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
+      const to = `${SUPABASE_URL}/auth/v1/authorize?provider=google`
+               + `&redirect_to=${encodeURIComponent(origin)}`;
+      res.writeHead(302, { location: to });
+      return res.end();
+    }
+
+    /* --------------------------- email + password -------------------------- */
+    // Passwords are hashed and checked by Supabase; this server forwards the
+    // credentials over HTTPS and keeps nothing. Nothing in this block is ever
+    // logged — the failure paths report Supabase's STATUS and a mapped message,
+    // never the body of a request that carried a password.
+    //
+    // With "Confirm email" switched off in Supabase this flow sends NO email at
+    // all, which is the whole point: the built-in sender allows two an hour.
+
+    const authError = (status, body) => {
+      const b = String(body || '');
+      if (/already registered|already been registered/i.test(b))
+        return 'There is already an account with that email. Try signing in instead.';
+      if (/Email not confirmed/i.test(b))
+        return 'That account still needs confirming by email. Turn off "Confirm email" in Supabase, or use the emailed link.';
+      if (/Invalid login credentials/i.test(b)) return 'That email and password do not match.';
+      if (/Password should be|weak|at least/i.test(b)) return 'That password is too short — use at least 8 characters.';
+      if (status === 429 || /rate limit/i.test(b)) return 'Too many attempts just now. Wait a minute and try again.';
+      return 'Could not do that just now.';
+    };
+
+    if (req.method === 'POST' && (url.pathname === '/api/account/signup' || url.pathname === '/api/account/signin')) {
+      const { email, password } = await readBody(req);
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(email || '')))
+        return json(res, 400, { error: 'That does not look like an email address.' });
+      if (String(password || '').length < 8)
+        return json(res, 400, { error: 'Use a password of at least 8 characters.' });
+
+      const signup = url.pathname.endsWith('signup');
+      const path = signup ? '/auth/v1/signup' : '/auth/v1/token?grant_type=password';
+      let r;
+      try { r = await supa(path, { method: 'POST', body: { email, password } }); }
+      catch { return json(res, 502, { error: 'Could not reach the sign-in service.' }); }
+      if (!r.ok) return json(res, r.status === 400 ? 400 : 502,
+        { error: authError(r.status, r.body), status: r.status });
+
+      const j = r.json || {};
+      if (signup && !j.access_token) {
+        return json(res, 200, { needsConfirmation: true,
+          error: 'Account made, but Supabase wants it confirmed by email. Turn off "Confirm email" '
+               + 'in Authentication → Providers → Email so people can sign in straight away.' });
+      }
+      if (!j.access_token) return json(res, 502, { error: 'No session came back. Try again.' });
+      return json(res, 200, { access_token: j.access_token, refresh_token: j.refresh_token,
+                              expires_in: j.expires_in, email: (j.user && j.user.email) || null });
     }
 
     // Ask Supabase to email a one-time link. No password is ever created, sent
@@ -594,7 +657,23 @@ const server = http.createServer(async (req, res) => {
         // Site URL instead of back to this app.
         const r = await supa(`/auth/v1/otp?redirect_to=${encodeURIComponent(origin)}`,
           { method: 'POST', body: { email, create_user: true } });
-        if (!r.ok) return json(res, 502, { error: 'Could not send the link just now.', detail: r.body });
+        if (!r.ok) {
+          // "Could not send the link" is true but useless. The three things that
+          // actually go wrong here are all fixable in a minute IF you are told
+          // which one it is, so say so.
+          const body = String(r.body || '');
+          let error = 'Could not send the link just now.';
+          if (r.status === 429 || /rate.?limit|too many/i.test(body)) {
+            error = 'Too many sign-in emails in a short time. Supabase limits these — '
+                  + 'wait a few minutes and try again.';
+          } else if (/redirect/i.test(body)) {
+            error = `The address ${origin} is not on the allowlist in Supabase `
+                  + '(Authentication → URL Configuration → Redirect URLs).';
+          } else if (r.status === 422 || /invalid|not.?allowed/i.test(body)) {
+            error = 'Supabase refused that sign-in request. Check the URL configuration.';
+          }
+          return json(res, 502, { error, status: r.status, detail: body.slice(0, 200) });
+        }
         // Echo where the link will come back to. When it lands somewhere else it
         // is almost always Supabase falling back to its Site URL because this
         // origin is not on the Redirect URLs allowlist — and without seeing the

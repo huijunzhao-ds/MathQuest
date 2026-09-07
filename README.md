@@ -239,6 +239,24 @@ names, no account details — but if strangers' children are typing questions in
 that is a decision to make on purpose rather than by default. The paid tier does not
 use prompts for product improvement.
 
+**Email and password is the front door**, because it can send NO email at all —
+provided "Confirm email" is off in Supabase. That matters more than it sounds:
+Supabase's built-in sender allows two messages an hour, so an emailed link is fine
+for one parent testing and useless for a room of them. The link still exists as a
+secondary option, and Google sign-in is there when `AUTH_GOOGLE=1`.
+
+Passwords are hashed and checked by Supabase. This server forwards the credentials
+over HTTPS and keeps nothing: the failure paths report Supabase's status code and a
+mapped message, never the body of a request that carried a password.
+
+**Two ways in for a parent.** A magic link by email, and — when `AUTH_GOOGLE=1` —
+Google sign-in. The second is not a convenience: Supabase's built-in email sender
+allows two messages an hour, which is fine for one parent testing and useless for a
+room of them. OAuth sends no email at all, so it is the door that still opens when
+the other is rate-limited. It is behind a flag because it needs configuring in both
+Google Cloud and Supabase, and a button that leads to an error page is worse than no
+button.
+
 **`/api/selftest` answers only to localhost**, since it names the provider, shows a
 masked key and makes a real model call on every hit.
 

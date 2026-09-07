@@ -21,13 +21,18 @@ export function email() { const s = session(); return s && s.email; }
 export function signOut() { try { localStorage.removeItem(SESSION_KEY); } catch {} }
 
 /** Is the feature switched on at all on this deployment? */
-export async function enabled() {
+export async function config() {
   try {
     const r = await fetch('/api/account/status');
     const j = await r.json();
-    return Boolean(j && j.enabled);
-  } catch { return false; }
+    return { enabled: Boolean(j && j.enabled), google: Boolean(j && j.google),
+             password: Boolean(j && j.password) };
+  } catch { return { enabled: false, google: false, password: false }; }
 }
+export async function enabled() { return (await config()).enabled; }
+
+/** Straight to Supabase; it comes back with the same fragment a magic link uses. */
+export function signInWithGoogle() { location.href = '/api/account/oauth/google'; }
 
 /**
  * A magic link comes back as a URL fragment. Read it, keep it, and scrub it from
@@ -79,6 +84,24 @@ async function call(path, opts = {}, retried = false) {
   let j = null; try { j = await r.json(); } catch {}
   return { ok: r.ok, status: r.status, json: j };
 }
+
+/** Email + password. The password goes to Supabase and is never stored here. */
+async function credentials(path, email, password) {
+  let r, j = {};
+  try {
+    r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email, password }) });
+    j = await r.json().catch(() => ({}));
+  } catch { return { ok: false, error: 'Could not reach the sign-in service.' }; }
+  if (!r.ok || !j.access_token) return { ok: false, error: j.error || 'Could not sign in.',
+                                         needsConfirmation: Boolean(j.needsConfirmation) };
+  write(SESSION_KEY, { access_token: j.access_token, refresh_token: j.refresh_token || null,
+                       expires_at: Date.now() + (Number(j.expires_in || 3600) * 1000),
+                       email: j.email || email });
+  return { ok: true };
+}
+export const signUp = (email, password) => credentials('/api/account/signup', email, password);
+export const signIn = (email, password) => credentials('/api/account/signin', email, password);
 
 export async function sendLink(address) {
   const r = await fetch('/api/account/link', {
