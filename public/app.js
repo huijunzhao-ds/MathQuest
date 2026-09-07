@@ -221,7 +221,7 @@ let syncState = '';          // '', 'saving', 'saved', 'failed'
 let pushTimer = null;
 
 function renderSync() {
-  const el = $('acctSync');
+  const el = $('pSync');
   if (!el) return;
   el.textContent = syncState === 'saving' ? ' · saving…'
     : syncState === 'saved' ? ' · progress saved'
@@ -294,59 +294,22 @@ async function cloudMergeDown() {
 }
 
 async function renderAccount() {
+  const cfg = await Cloud.config();
   const box = $('acctBox');
-  if (!(await Cloud.enabled())) { box.classList.add('hidden'); return; }
+  if (!cfg.enabled) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
-  const inn = Cloud.signedIn();
-  $('acctIn').classList.toggle('hidden', !inn);
-  $('acctOut').classList.toggle('hidden', inn);
-  if (!inn) $('acctPitch').textContent = 'Progress is saved on this device only. Sign in on the '
-    + 'grown-ups page and it follows your children to any device.';
-  if (inn) {
-    $('acctWho').textContent = Cloud.email() || 'your account';
-    if (!Cloud.email()) Cloud.whoAmI().then(() => { $('acctWho').textContent = Cloud.email() || 'your account'; });
-    const unlinked = Profiles.listProfiles().filter(p => !p.remote).length;
-    $('acctUpload').textContent = unlinked
-      ? `Save ${unlinked === 1 ? 'this one' : `these ${unlinked}`} to my account`
-      : 'Everything is saved to your account';
-    $('acctUpload').disabled = !unlinked;
-    renderSync();
-  }
+  // Deliberately NOT a second sign-in form. There used to be one here and one on
+  // the grown-ups page; they drifted, and the one people actually found was the
+  // stale one. Everything to do with accounts now lives in exactly one place.
+  const unlinked = Profiles.listProfiles().filter(p => !p.remote).length;
+  $('acctLine').textContent = Cloud.signedIn()
+    ? `Signed in as ${Cloud.email() || 'your account'}.`
+      + (unlinked ? ` ${unlinked} player${unlinked > 1 ? 's are' : ' is'} still only on this device.` : '')
+    : 'Progress is saved on this device only. Sign in to keep it across devices.';
+  $('acctOpen').textContent = Cloud.signedIn() ? 'Manage players' : 'Sign in & manage players';
 }
 
-$('acctSend').onclick = async () => {
-  const address = $('acctEmail').value.trim();
-  const msg = $('acctMsg');
-  msg.className = ''; msg.textContent = 'Sending…';
-  const r = await Cloud.sendLink(address);
-  msg.className = r.ok ? 'good' : 'bad';
-  msg.textContent = r.ok
-    ? `Check ${address}. The link signs you in on this device — no password to remember.`
-    : (r.error || 'Could not send that just now.');
-};
-$('acctEmail').onkeydown = e => { if (e.key === 'Enter') $('acctSend').click(); };
-
-$('acctUpload').onclick = async () => {
-  const msg = $('acctMsg'); msg.className = ''; msg.textContent = 'Saving…';
-  let ok = 0, failed = 0;
-  for (const p of Profiles.listProfiles()) {
-    if (p.remote) continue;
-    const made = await Cloud.addChild(p.name, Profiles.loadProgress(p.id));
-    if (made) { Profiles.linkProfile(p.id, made.id); ok++; } else failed++;
-  }
-  msg.className = failed ? 'bad' : 'good';
-  msg.textContent = failed
-    ? `Saved ${ok}, but ${failed} did not go up. Everything is still safe on this device.`
-    : 'Saved. Sign in on another device and they will be there.';
-  if (ok) location.reload();
-};
-
-$('acctOff').onclick = () => {
-  if (!confirm('Sign out? Every child stays on this device — you are just disconnecting the account.')) return;
-  Cloud.signOut();
-  Profiles.unlinkAll();
-  location.reload();
-};
+$('acctOpen').onclick = showParents;
 
 function openWho() { renderWho(); renderAccount(); $('whoModal').classList.remove('hidden'); }
 
@@ -478,8 +441,27 @@ $('pAdd').onclick = async () => {
 };
 $('pNewName').onkeydown = e => { if (e.key === 'Enter') $('pAdd').click(); };
 
-$('pUpload').onclick = () => $('acctUpload').onclick();
-$('pOff').onclick = () => $('acctOff').onclick();
+$('pUpload').onclick = async () => {
+  const msg = $('pMsg2'); msg.className = ''; msg.textContent = 'Saving…';
+  let ok = 0, failed = 0;
+  for (const p of Profiles.listProfiles()) {
+    if (p.remote) continue;
+    const made = await Cloud.addChild(p.name, Profiles.loadProgress(p.id));
+    if (made) { Profiles.linkProfile(p.id, made.id); ok++; } else failed++;
+  }
+  msg.className = failed ? 'bad' : 'good';
+  msg.textContent = failed
+    ? `Saved ${ok}, but ${failed} did not go up. Everything is still safe on this device.`
+    : 'Saved. Sign in on another device and they will be there.';
+  renderParents();
+};
+
+$('pOff').onclick = () => {
+  if (!confirm('Sign out? Every player stays on this device — you are just disconnecting the account.')) return;
+  Cloud.signOut();
+  Profiles.unlinkAll();
+  location.reload();
+};
 
 $('whoBtn').onclick = openWho;
 $('whoClose').onclick = () => $('whoModal').classList.add('hidden');

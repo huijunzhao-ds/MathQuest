@@ -239,6 +239,12 @@ names, no account details — but if strangers' children are typing questions in
 that is a decision to make on purpose rather than by default. The paid tier does not
 use prompts for product improvement.
 
+**There is exactly one sign-in surface.** There were briefly two — a form inside the
+"who is playing" panel and the grown-ups page — and they drifted: the password form
+was added to one, and the one people actually found still offered only the emailed
+link. The panel now carries a status line and a button through to the single page
+that owns everything to do with accounts.
+
 **Email and password is the front door**, because it can send NO email at all —
 provided "Confirm email" is off in Supabase. That matters more than it sounds:
 Supabase's built-in sender allows two messages an hour, so an emailed link is fine
