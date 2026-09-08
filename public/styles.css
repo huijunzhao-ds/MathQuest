@@ -793,6 +793,33 @@ button.tool.mic.listening { background: rgba(252,165,165,.18); border-color: rgb
 /* ---- The grown-ups area ----------------------------------------------------
    A real page, reachable in one tap, but never in the way: the game opens on
    the map and a child is not asked to sign in to anything.                    */
+/* ----------------------------------- tabs ---------------------------------- */
+.tabs {
+  display: flex; gap: 8px; margin: 0 0 16px; padding: 6px;
+  background: rgba(255,255,255,.045); border: 2px solid rgba(255,255,255,.09);
+  border-radius: 18px;
+}
+.tab {
+  all: unset; flex: 1; cursor: pointer; text-align: center;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 10px; border-radius: 13px; white-space: nowrap;
+  font-family: var(--font); font-size: 16px; font-weight: 600; color: var(--ink-dim);
+  transition: background .15s, color .15s;
+}
+.tab span { font-size: 17px; }
+.tab:hover { color: var(--ink); background: rgba(255,255,255,.06); }
+.tab.on {
+  color: var(--on-sky); background: linear-gradient(160deg, var(--sky-2, #7dd3fc), var(--sky));
+  box-shadow: 0 0 24px rgba(125,211,252,.35);
+}
+@media (max-width: 560px) {
+  .tab { font-size: 14px; padding: 10px 6px; gap: 5px; }
+  .tab span { font-size: 15px; }
+}
+@media (max-width: 400px) {
+  .tab { flex-direction: column; gap: 3px; font-size: 12.5px; }
+}
+
 .grownlink { text-align: center; margin: 4px 0 14px; }
 .grownlink button {
   font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
@@ -893,47 +920,61 @@ button.tool.mic.listening { background: rgba(252,165,165,.18); border-color: rgb
 .likebtn.on { filter: none; }
 
 /* ---------------------------- maker & friends ------------------------------- */
-#makeText {
-  width: 100%; box-sizing: border-box; resize: vertical; min-height: 96px;
-  font: 600 17px/1.55 var(--font-body); color: var(--ink);
-  background: rgba(255,255,255,.05); border: 2px solid rgba(255,255,255,.14);
-  border-radius: 16px; padding: 14px 16px;
+.shapes { display: grid; gap: 10px; margin-top: 6px; }
+@media (min-width: 620px) { .shapes { grid-template-columns: 1fr 1fr; } }
+.shape {
+  all: unset; cursor: pointer; display: block; padding: 14px 16px; border-radius: 16px;
+  background: rgba(255,255,255,.05); border: 2px solid rgba(255,255,255,.11);
+  transition: background .15s, border-color .15s;
 }
-#makeText:focus { outline: none; border-color: var(--sky); }
-#makeText::placeholder { color: var(--ink-dim); font-weight: 600; }
-.makecount { font-size: 12.5px; font-weight: 700; color: var(--ink-dim); margin-top: 8px; text-align: right; }
+.shape b { display: block; font-family: var(--font); font-size: 17px; font-weight: 600; color: var(--ink); }
+.shape small { display: block; margin-top: 5px; font-size: 13px; font-weight: 700; color: var(--ink-dim); line-height: 1.45; }
+.shape:hover { background: rgba(255,255,255,.09); }
+.shape.on { border-color: var(--sky); background: rgba(125,211,252,.13); }
+.shape.on b { color: var(--sky); }
+
+.pickrow { display: flex; align-items: flex-start; gap: 14px; margin-top: 14px; }
+.pickrow label {
+  flex: 0 0 82px; padding-top: 7px; font-family: var(--font); font-size: 14px;
+  font-weight: 600; color: var(--ink-dim);
+}
+.chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.pick {
+  all: unset; cursor: pointer; padding: 6px 13px; border-radius: 999px;
+  background: rgba(255,255,255,.06); border: 2px solid transparent;
+  font-size: 14.5px; font-weight: 700; color: var(--ink-dim);
+}
+.pick:hover { color: var(--ink); background: rgba(255,255,255,.12); }
+.pick.on { color: var(--on-sky); background: var(--sky); border-color: var(--sky); }
+
+.numrow { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.numrow label {
+  flex: 1 1 150px; font-family: var(--font); font-size: 15.5px; font-weight: 600; color: var(--ink-dim);
+}
+.numrow input {
+  width: 78px; text-align: center; font-family: var(--font); font-size: 22px; font-weight: 600;
+  color: var(--ink); background: rgba(255,255,255,.06);
+  border: 2px solid rgba(255,255,255,.14); border-radius: 12px; padding: 7px 4px;
+  -moz-appearance: textfield;
+}
+.numrow input::-webkit-outer-spin-button, .numrow input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.numrow input:focus { outline: none; border-color: var(--sky); }
+.stepper {
+  all: unset; cursor: pointer; width: 42px; height: 42px; border-radius: 12px;
+  display: grid; place-items: center; font-size: 22px; font-weight: 700;
+  color: var(--ink); background: rgba(255,255,255,.08);
+}
+.stepper:hover { background: rgba(255,255,255,.16); }
+
 .makeanswer { margin-top: 16px; font-size: 15.5px; font-weight: 700; color: var(--ink-dim); min-height: 22px; }
 .makeanswer b { color: var(--ink); font-size: 19px; }
 .makewhy {
-  font-size: 15px; font-weight: 700; color: var(--amber, #f0b429); line-height: 1.5;
+  margin-top: 10px; font-size: 15px; font-weight: 700; color: var(--gold); line-height: 1.5;
   text-align: center; min-height: 22px;
 }
-.makewhy.good { color: var(--mint, #4ade80); }
+.makewhy.good { color: var(--win); }
 #makeSend[disabled], #makeTry[disabled] { opacity: .4; pointer-events: none; }
-
-.mkpad { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; align-items: flex-end; }
-.mknum {
-  display: inline-flex; align-items: baseline; gap: 7px;
-  font-family: var(--font); font-size: 25px; font-weight: 600;
-  color: var(--on-sky); background: linear-gradient(160deg, var(--gold-2), var(--gold));
-  border: none; border-radius: 14px; padding: 6px 16px; cursor: pointer;
-  box-shadow: 0 0 22px rgba(255,201,74,.5);
-  transition: transform .12s, box-shadow .18s;
-}
-.mknum small { font-family: var(--font-body); font-size: 13px; font-weight: 800; opacity: .72; }
-.mknum:hover  { transform: translateY(-3px); box-shadow: 0 0 30px rgba(255,201,74,.85); }
-.mknum:active { transform: translateY(1px); }
-
-.subhead { font-family: var(--font); font-size: 15px; font-weight: 600; color: var(--ink-dim); margin: 22px 0 10px; }
-.likedlist { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
-.likedchip {
-  all: unset; cursor: pointer; display: flex; align-items: center; gap: 14px;
-  justify-content: space-between; padding: 11px 15px; border-radius: 14px;
-  background: rgba(255,255,255,.05); border: 2px solid rgba(255,255,255,.11);
-  font-size: 14.5px; font-weight: 700; color: var(--ink-dim); line-height: 1.4;
-}
-.likedchip:hover { background: rgba(255,255,255,.10); color: var(--ink); }
-.likedchip b { color: var(--sky); white-space: nowrap; font-size: 14px; }
+#makePreview { font-size: 21px; line-height: 1.75; }
 
 .friendlist { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
 .friend {

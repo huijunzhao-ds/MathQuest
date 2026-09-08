@@ -44,8 +44,17 @@
 
   <div class="combobar" id="combobar"><span id="comboText"></span></div>
 
+  <!-- The three places a child can be. Below the map they were invisible: nobody
+       scrolls past a star map to find out that friends exist. -->
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-tab="map"><span>🗺️</span>Star map</button>
+    <button class="tab" data-tab="social"><span>🎁</span>Puzzles &amp; friends</button>
+    <button class="tab" data-tab="parents"><span>👋</span>Grown-ups</button>
+  </nav>
+
   <!-- ============================ STAR MAP (home) =========================== -->
   <section id="roadScreen">
+   <div id="tabMap">
     <div class="card hero">
       <div class="pip" id="pipHome"></div>
       <div class="herotext">
@@ -66,27 +75,36 @@
       <div class="roadmap" id="roadmap"></div>
     </div>
 
-    <div class="card" id="socialCard">
-      <div class="cardhead">
-        <h2>Puzzles &amp; friends</h2>
-        <button class="primary" id="makeBtn">Make a puzzle ✏️</button>
-      </div>
-      <p class="starkey">Write your own word problem and send it to a friend. Any puzzle you liked
-         can be sent on too &mdash; look for the <b>❤️</b> while you play.</p>
-      <div id="likedList" class="likedlist"></div>
-      <h3 class="subhead">Friends who sent you puzzles</h3>
-      <div id="friendList" class="friendlist"></div>
-    </div>
-
-    <div class="grownlink">
-      <button id="parentsBtn">For grown-ups — sign in &amp; set up players</button>
-    </div>
-
     <div class="card">
       <h2>What I noticed about your thinking</h2>
       <div id="insights" class="muted"></div>
       <div class="badges" id="badges"></div>
     </div>
+   </div>
+
+   <div id="tabSocial" class="hidden">
+    <div class="card hero">
+      <div class="pip" id="pipSocial"></div>
+      <div class="herotext">
+        <div class="hellokicker">Puzzles &amp; friends</div>
+        <div class="hellomsg">Make one up, or send on one you loved.</div>
+      </div>
+      <button class="primary big" id="makeBtn">Make a puzzle ✏️</button>
+    </div>
+
+    <div class="card">
+      <h2>Puzzles you liked</h2>
+      <p class="starkey">Tap the <b>❤️</b> on any puzzle while you play and it waits here,
+         ready to send to a friend.</p>
+      <div id="likedList" class="likedlist"></div>
+    </div>
+
+    <div class="card">
+      <h2>Friends</h2>
+      <p class="starkey">A name turns up here when that friend sends you a puzzle.</p>
+      <div id="friendList" class="friendlist"></div>
+    </div>
+   </div>
   </section>
 
   <!-- ============================== GROWN-UPS =============================== -->
@@ -97,7 +115,7 @@
 
       <div id="pOut">
         <p class="pnote">Sign in to set up a player for each child, and to keep their progress
-          on every device you use. There is no password — we email you a link.</p>
+          on every device you use.</p>
         <p class="pnote">Children never sign in. The account is yours; each child is a player
           on it, with a first name and a school year.</p>
         <button class="googlebtn hidden" id="pGoogle">
@@ -148,40 +166,45 @@
       <div class="pip" id="pipMake"></div>
       <div class="herotext">
         <div class="hellokicker">Puzzle maker</div>
-        <div class="hellomsg" id="makeMsg">Write a story with numbers in it.</div>
+        <div class="hellomsg" id="makeMsg">Build a puzzle for a friend to solve.</div>
       </div>
-      <button class="ghost" id="makeBack">Back to the map</button>
+      <button class="ghost" id="makeBack">Back</button>
     </div>
 
     <div class="card">
-      <h2>1 &middot; Your story</h2>
-      <p class="starkey">Write it like a story, and put the numbers in as numbers &mdash;
-         <i>&ldquo;I had 12 stickers and gave 5 to my brother. How many are left?&rdquo;</i>
-         Finish with a question.</p>
-      <textarea id="makeText" maxlength="300" rows="4"
-        placeholder="I had 12 stickers and gave 5 to my brother. How many are left?"></textarea>
-      <div class="makecount"><span id="makeCount">0</span> letters</div>
+      <h2>1 &middot; What kind of puzzle?</h2>
+      <p class="starkey">This is the real choice. It decides what your friend has to work out.</p>
+      <div class="shapes" id="makeShapes"></div>
+    </div>
+
+    <div class="card" id="makeWords">
+      <h2>2 &middot; Who and what</h2>
+      <div class="pickrow"><label>Who</label><div class="chips" id="pickWho"></div></div>
+      <div class="pickrow hidden" id="pickWho2Row"><label>And</label><div class="chips" id="pickWho2"></div></div>
+      <div class="pickrow"><label>Counting</label><div class="chips" id="pickThing"></div></div>
     </div>
 
     <div class="card">
-      <h2>2 &middot; The answer</h2>
-      <p class="starkey">Tap your numbers and the signs to build the equation that solves it.</p>
-      <div class="eqstrip empty" id="makeEq"></div>
-      <div class="mkpad" id="makeNums"></div>
-      <div class="ops" id="makeOps">
-        <button class="op" data-mop="+">+</button>
-        <button class="op" data-mop="-">&minus;</button>
-        <button class="op" data-mop="x">&times;</button>
-        <button class="op" data-mop="/">&divide;</button>
-        <button class="op paren" data-mop="(">(</button>
-        <button class="op paren" data-mop=")">)</button>
-        <button class="op util" data-mop="undo">&#8629;</button>
-        <button class="op util" data-mop="clear">Clear</button>
+      <h2>3 &middot; The numbers</h2>
+      <p class="starkey">Choosing numbers that make it interesting is most of the puzzle.</p>
+      <div class="numrow">
+        <label id="labA">First number</label>
+        <button class="stepper" data-step="a-">&minus;</button>
+        <input id="numA" type="number" min="1" max="100" value="4" inputmode="numeric">
+        <button class="stepper" data-step="a+">+</button>
       </div>
+      <div class="numrow">
+        <label id="labB">Second number</label>
+        <button class="stepper" data-step="b-">&minus;</button>
+        <input id="numB" type="number" min="1" max="100" value="6" inputmode="numeric">
+        <button class="stepper" data-step="b+">+</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Your puzzle</h2>
+      <div class="story" id="makePreview"></div>
       <div id="makeAnswer" class="makeanswer"></div>
-    </div>
-
-    <div class="card">
       <div id="makeWhy" class="makewhy"></div>
       <div class="chbtns">
         <button class="primary big" id="makeSend">Send it to a friend</button>

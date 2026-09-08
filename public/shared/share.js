@@ -5,14 +5,21 @@
 // friend who has never opened the app before, and why this works the moment it is
 // deployed rather than after a login flow.
 //
-// Two kinds:
+// Two kinds, and NEITHER of them carries prose:
 //   - a puzzle the app generated, which its id already describes completely, so
-//     the link carries about twenty characters
-//   - a puzzle a child wrote, which carries its own text
+//     the link is about twenty characters
+//   - a puzzle a child built, which carries a shape index, two word indices and
+//     two numbers
 //
-// Anything a child WROTE is shown to another child, so it goes through check()
-// first. That is a filter, not a moderator: it is here to stop the obvious and to
-// make the failure a friendly message rather than a surprise on a friend's screen.
+// That second point is the whole safety design. Text written by one child and
+// shown to another cannot be made safe by a word blocklist: a blocklist matches
+// whole English words from a fixed list, so misspellings, other languages and
+// ordinary unkindness walk straight through, and because the puzzle lives in the
+// link an adult can hand-write one and send it to a child. So the child never
+// writes prose. Checking a link on arrival is bounds-checking six small integers
+// — there is no string in it that could say anything at all.
+
+import { SHAPE, WHO, THING, MAX_NUM, validate, compose } from './authoring.js';
 
 /* ------------------------------ url-safe base64 ----------------------------- */
 
@@ -31,81 +38,51 @@ const b64 = {
   }
 };
 
-/* --------------------------------- safety ----------------------------------- */
+/* --------------------------------- names ------------------------------------ */
+// The one free-text field left is the sender's own player name, which a parent
+// typed and which only ever appears as "<name> sent you this puzzle". It is
+// trimmed to letters, spaces and hyphens so a name cannot become a sentence.
 
-// Deliberately short and boring. A longer list of banned words would give a false
-// sense of completeness; what this actually buys is: no links out, no contact
-// details, nothing enormous, and the shape of a real word problem.
-const BLOCK = /\b(fuck|shit|bitch|bastard|cunt|dick|piss|slut|whore|nigg|fag|rape|kill yourself|kys)\b/i;
-const CONTACT = /(https?:\/\/|www\.|\.com|\.net|\.org|@[a-z0-9]|\+?\d[\d\s().-]{8,})/i;
-
-export const MAX_TEXT = 240;
-export const MIN_TEXT = 12;
-
-/**
- * Is this safe and sane to put on another child's screen?
- * Returns { ok } or { ok:false, why } with a message a child can act on.
- */
-export function check(text, correct) {
-  const t = String(text || '').trim();
-  // Measure what a CHILD sees, not the raw string. "[[1|a]] [[2|b]]?" is
-  // eighteen characters of markup and seven characters of story, and it was the
-  // markup that was getting past the length check.
-  const plain = t.replace(/\[\[(\d+)\|[^\]]*\]\]/g, '$1').trim();
-  if (plain.length < MIN_TEXT) return { ok: false, why: 'Write a bit more so your friend knows the story.' };
-  if (plain.length > MAX_TEXT) return { ok: false, why: `Keep it under ${MAX_TEXT} letters so it fits on the screen.` };
-  if (BLOCK.test(plain)) return { ok: false, why: 'Let us keep it friendly — try different words.' };
-  if (CONTACT.test(plain)) return { ok: false, why: 'Puzzles cannot have links, emails or phone numbers in them.' };
-
-  const nums = [...t.matchAll(/\[\[(\d+)\|([^\]]{1,40})\]\]/g)];
-  if (nums.length < 2) return { ok: false, why: 'Tap at least two numbers in your story so they can be used.' };
-  if (nums.length > 4) return { ok: false, why: 'Four numbers is plenty for one puzzle.' };
-  if (!/\?\s*$/.test(plain)) return { ok: false, why: 'End with a question, so your friend knows what to find.' };
-
-  const eq = String(correct || '').trim();
-  if (!/^[\d+\-x/() ]+$/.test(eq) || !/\d/.test(eq))
-    return { ok: false, why: 'Build the answer equation by tapping your numbers.' };
-
-  // Every number in the equation has to be one the story actually offers.
-  const inStory = new Set(nums.map(m => m[1]));
-  const used = eq.match(/\d+/g) || [];
-  if (!used.every(n => inStory.has(n)))
-    return { ok: false, why: 'Only use numbers that are in your story.' };
-  if (new Set(used).size < 2)
-    return { ok: false, why: 'Use at least two different numbers in the answer.' };
-  return { ok: true };
+const MAX_NAME = 24;
+export function cleanName(n) {
+  return String(n || '').replace(/[^\p{L}\p{N} '-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, MAX_NAME);
 }
 
-/* ------------------------------ encode / decode ----------------------------- */
+/* ---------------------------------- pack ------------------------------------ */
 
-/** A puzzle the app generated: its id already IS the puzzle. */
+/** A puzzle the app made. Its id IS the puzzle, so the link is tiny. */
 export function packExisting(problemId, fromName) {
-  return b64.enc(JSON.stringify({ i: problemId, n: (fromName || '').slice(0, 24) }));
+  return b64.enc(JSON.stringify({ i: problemId, n: cleanName(fromName) }));
 }
 
-/** A puzzle a child wrote. */
-export function packAuthored({ text, correct, name }) {
+/** A puzzle a child built out of a shape, two words and two numbers. */
+export function packBuilt(choice, fromName) {
+  const { shape, who, who2, thing, a, b } = choice;
   return b64.enc(JSON.stringify({
-    t: String(text).slice(0, MAX_TEXT), c: String(correct), n: (name || '').slice(0, 24)
+    k: shape, w: who, w2: who2 ?? null, o: thing, a, b, n: cleanName(fromName)
   }));
 }
 
-/** Returns { kind:'existing'|'authored', ... } or null if the link is damaged. */
+/** Returns { kind:'existing'|'built'|'rejected', ... } or null if it is damaged. */
 export function unpack(code) {
   let o;
   try { o = JSON.parse(b64.dec(String(code || ''))); } catch { return null; }
   if (!o || typeof o !== 'object') return null;
-  const from = typeof o.n === 'string' ? o.n.slice(0, 24) : '';
+  const from = cleanName(o.n);
+
   if (typeof o.i === 'string' && o.i) return { kind: 'existing', id: o.i, from };
-  if (typeof o.t === 'string' && typeof o.c === 'string') {
-    // Re-check on the way IN as well as on the way out. A link can be edited by
+
+  if (typeof o.k === 'number') {
+    // Re-checked on the way IN as well as on the way out: a link can be edited by
     // hand, so trusting what was checked at share time would be trusting the
-    // sender's browser.
-    const v = check(o.t, o.c);
-    if (!v.ok) return { kind: 'rejected', why: v.why, from };
-    return { kind: 'authored', text: o.t, correct: o.c, from };
+    // sender's browser. Here that check is arithmetic on six integers.
+    const choice = { shape: o.k, who: o.w, who2: o.w2 ?? undefined, thing: o.o, a: o.a, b: o.b };
+    const v = validate(choice);
+    if (!v.ok) return { kind: 'rejected', why: 'That puzzle does not add up — ask your friend to make it again.', from };
+    return { kind: 'built', choice, problem: compose(choice), from };
   }
   return null;
 }
 
 export const shareUrl = (origin, code) => `${origin}/?p=${code}`;
+export { SHAPE, WHO, THING, MAX_NUM, validate, compose };

@@ -250,7 +250,7 @@ function repeatedAdditions(a, b) {
   return out;
 }
 
-function modelFor(concept, band, n, kind) {
+export function modelFor(concept, band, n, kind) {
   const { a, b, c } = n;
   const hi = Math.max(a, b), lo = Math.min(a, b);
   switch (concept) {

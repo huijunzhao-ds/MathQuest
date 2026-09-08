@@ -124,7 +124,7 @@ function makeStars(n = 70) {
 
 async function boot() {
   makeStars();
-  Pip.mount($('pip'), $('pipHome'), $('pipMake'));
+  Pip.mount($('pip'), $('pipHome'), $('pipMake'), $('pipSocial'));
   renderHeader();
   if (!Speech.canSpeak) $('readBtn').classList.add('hidden');
   if (Speech.canListen) $('micBtn').classList.remove('hidden');
@@ -152,7 +152,7 @@ async function boot() {
     state.mode = 'main';
     state.queue = [];
     $('roadScreen').classList.add('hidden');
-    $('playScreen').classList.remove('hidden');
+    $('playScreen').classList.remove('hidden'); $('tabs').classList.add('hidden');
     $('homeBtn').classList.remove('hidden');
     loadProblem(sent.problem);
   }
@@ -238,11 +238,11 @@ function puzzleFromLink() {
     const p = problemById(got.id);
     return p ? { problem: { ...p, from: got.from }, from: got.from } : { bad: 'That puzzle is from a newer version of the game.' };
   }
-  // A child wrote this one. It carries no trap table, so diagnosis falls back to
-  // the generic checks — the equation is still marked properly.
+  // A child built this one out of a known shape, so it arrives with a real trap
+  // table: a friend who adds when they should multiply gets told what they did,
+  // on a puzzle their friend invented. Free prose could never have done that.
   const raw = { id: 'shared-' + Math.random().toString(36).slice(2, 8),
-                concept: 'add-join', authored: true, from: got.from,
-                text: got.text, correct: got.correct, accept: [], traps: {} };
+                authored: true, from: got.from, ...got.problem };
   return { problem: hydrate(raw), from: got.from };
 }
 
@@ -269,40 +269,14 @@ function toggleLike(id) {
 }
 
 /* ============================= PUZZLE MAKER =================================== */
-// A child writes a story in plain words with plain numbers. The markup the engine
-// wants ([[12|stickers]]) is derived, never typed: asking a seven-year-old to type
-// double brackets is asking them to stop being a seven-year-old.
+// A child builds a puzzle out of a SHAPE, words chosen from fixed lists and two
+// numbers. They never type prose, so the link cannot carry any — see the note at
+// the top of shared/authoring.js for why that is the whole point rather than a
+// limitation. What is left for the child is the part that actually teaches:
+// deciding whether this is a grouping or a joining, and picking numbers that make
+// it worth solving.
 
-const mk = { eq: [], nums: [] };
-
-/** The word after a number is what that number counts. Good enough, and invisible.
- *  The label is PEEKED, never consumed — the noun has to stay in the sentence, or
- *  "12 stickers" comes out the other end as a bare "12". */
-const STOPWORD = /^(to|of|in|on|at|and|or|the|a|an|from|for|more|less|left|each|every|his|her|their|my|your|its|them|is|are|was|were)$/i;
-function storyNumbers(text) {
-  const out = [];
-  const re = /\d+/g;
-  let m, i = 0;
-  while ((m = re.exec(text)) !== null) {
-    const after = text.slice(m.index + m[0].length);
-    let label = (after.match(/^\s+([A-Za-z][A-Za-z'-]*)/) || [])[1] || '';
-    if (STOPWORD.test(label)) label = '';
-    out.push({ value: Number(m[0]), label: label || 'in the story', short: label,
-               at: m.index, len: m[0].length, qid: i++ });
-  }
-  return out;
-}
-
-/** Plain typing in, engine markup out. */
-function storyMarkup(text) {
-  const nums = storyNumbers(text);
-  let out = '', last = 0;
-  for (const n of nums) {
-    out += text.slice(last, n.at) + `[[${n.value}|${n.label}]]`;
-    last = n.at + n.len;
-  }
-  return out + text.slice(last);
-}
+const mk = { shape: 3, who: 0, who2: 1, thing: 0, a: 4, b: 6 };
 
 function showMake() {
   Speech.stop();
@@ -310,108 +284,112 @@ function showMake() {
   $('playScreen').classList.add('hidden');
   $('parentScreen').classList.add('hidden');
   $('makeScreen').classList.remove('hidden');
+  $('tabs').classList.add('hidden');
   $('homeBtn').classList.add('hidden');
   document.documentElement.style.removeProperty('--world');
   Pip.set('idle');
+  buildPickers();
   renderMake();
+}
+
+function buildPickers() {
+  $('makeShapes').innerHTML = Share.SHAPE.map((s, i) =>
+    `<button class="shape ${i === mk.shape ? 'on' : ''}" data-shape="${i}">
+       <b>${esc(s.label)}</b><small>${esc(s.hint)}</small></button>`).join('');
+  const chips = (list, sel, attr) => list.map((w, i) =>
+    `<button class="pick ${i === sel ? 'on' : ''}" data-${attr}="${i}">${esc(w)}</button>`).join('');
+  $('pickWho').innerHTML   = chips(Share.WHO, mk.who, 'who');
+  $('pickWho2').innerHTML  = chips(Share.WHO, mk.who2, 'who2');
+  $('pickThing').innerHTML = chips(Share.THING.map(t => t.many), mk.thing, 'thing');
 }
 
 function renderMake() {
-  const text = $('makeText').value;
-  $('makeCount').textContent = text.trim().length;
-  mk.nums = storyNumbers(text);
+  const s = Share.SHAPE[mk.shape];
+  for (const b of document.querySelectorAll('[data-shape]'))
+    b.classList.toggle('on', Number(b.dataset.shape) === mk.shape);
+  for (const [attr, val] of [['who', mk.who], ['who2', mk.who2], ['thing', mk.thing]])
+    for (const b of document.querySelectorAll(`[data-${attr}]`))
+      b.classList.toggle('on', Number(b.dataset[attr]) === val);
+  $('pickWho2Row').classList.toggle('hidden', s.id !== 'compare');
 
-  // Numbers that left the story cannot stay in the equation.
-  const live = new Set(mk.nums.map(n => n.value));
-  mk.eq = mk.eq.filter(t => t.kind !== 'num' || live.has(t.value));
+  // The numbers are named by what they MEAN in this shape — "how many boxes" and
+  // "in each box", not "first" and "second". That naming is the lesson.
+  $('labA').textContent = s.aName;
+  $('labB').textContent = s.bName;
+  $('numA').value = mk.a;
+  $('numB').value = mk.b;
 
-  const pad = $('makeNums');
-  pad.innerHTML = '';
-  if (!mk.nums.length) {
-    pad.innerHTML = '<span class="muted">Type some numbers in your story and they will show up here.</span>';
-  }
-  const seen = new Set();
-  for (const n of mk.nums) {
-    if (seen.has(n.value)) continue;
-    seen.add(n.value);
-    const b = document.createElement('button');
-    b.className = 'mknum';
-    b.dataset.mnum = String(n.value);
-    b.innerHTML = n.short ? `${n.value}<small>${esc(n.short)}</small>` : String(n.value);
-    pad.appendChild(b);
-  }
-
-  const strip = $('makeEq');
-  strip.innerHTML = '';
-  strip.classList.toggle('empty', !mk.eq.length);
-  for (const t of mk.eq) {
-    const el = document.createElement('span');
-    el.className = 'chip' + (t.kind === 'op' ? ' op' : t.kind === 'paren' ? ' paren' : '');
-    el.textContent = DISPLAY[t.value] ?? t.value;
-    strip.appendChild(el);
-  }
-
-  const eq = mk.eq.map(t => t.value).join('');
-  const val = mk.eq.length >= 3 ? safeEval(eq) : null;
-  $('makeAnswer').innerHTML = (val === null || val === undefined || Number.isNaN(val))
-    ? ''
-    : `Your answer comes out as <b>${val}</b>. Is that right for your story?`;
-
-  // Say what is still missing while they type, not after they press send: a child
-  // who is told "no" at the end just stops making puzzles.
-  const verdict = Share.check(storyMarkup(text), eq);
-  const ready = verdict.ok && val !== null && Number.isFinite(val) && val >= 0;
-  $('makeWhy').textContent = verdict.ok
-    ? (ready ? 'Looks good — ready to send.' : 'That equation does not work out to a whole amount yet.')
-    : verdict.why;
-  $('makeWhy').classList.toggle('good', ready);
-  $('makeSend').disabled = !ready;
-  $('makeTry').disabled = !ready;
+  const v = Share.validate(mk);
+  const p = v.ok ? Share.compose(mk) : null;
+  $('makePreview').innerHTML = p
+    ? storyHtml(hydrate(p))
+    : '<span class="muted">Fix the bit below and your puzzle appears here.</span>';
+  $('makeAnswer').innerHTML = p ? `The answer is <b>${safeEval(p.correct)}</b>.` : '';
+  $('makeWhy').textContent = v.ok ? 'Ready to send.' : v.why;
+  $('makeWhy').classList.toggle('good', v.ok);
+  $('makeSend').disabled = !v.ok;
+  $('makeTry').disabled = !v.ok;
 }
 
-function madeProblem() {
-  const text = storyMarkup($('makeText').value.trim());
-  const eq = mk.eq.map(t => t.value).join('');
-  return { text, correct: eq };
+/** The story with its numbers highlighted, read-only — this is a preview, not a game. */
+function storyHtml(p) {
+  return p.tokens.map(t => t.type === 'num'
+    ? `<span class="num" style="cursor:default">${t.value}</span>`
+    : esc(t.value)).join('');
 }
 
-$('makeText').addEventListener('input', renderMake);
-$('makeNums').addEventListener('click', e => {
-  const b = e.target.closest('[data-mnum]');
-  if (!b) return;
-  mk.eq.push({ kind: 'num', value: Number(b.dataset.mnum) });
-  Sound.number(); renderMake();
-});
-$('makeOps').addEventListener('click', e => {
-  const b = e.target.closest('[data-mop]');
-  if (!b) return;
-  const op = b.dataset.mop;
-  if (op === 'undo') mk.eq.pop();
-  else if (op === 'clear') mk.eq = [];
-  else mk.eq.push({ kind: op === '(' || op === ')' ? 'paren' : 'op', value: op });
-  (op === 'undo' || op === 'clear') ? Sound.undo() : Sound.operator();
+$('makeShapes').addEventListener('click', e => {
+  const b = e.target.closest('[data-shape]'); if (!b) return;
+  mk.shape = Number(b.dataset.shape);
+  Sound.operator();
+  // A shape change can strand the numbers (9 given away out of 4). Nudge rather
+  // than shout: a child who has to fix an error they did not make will not make
+  // a second puzzle.
+  const s = Share.SHAPE[mk.shape];
+  if (s.bMax === 'a' && mk.b >= mk.a) mk.b = Math.max(1, mk.a - 1);
+  if (s.exact && mk.a % mk.b !== 0) mk.a = mk.b * Math.max(2, Math.round(mk.a / mk.b));
+  if (s.id === 'groups' && (mk.a === 1 || mk.b === 1)) { mk.a = Math.max(2, mk.a); mk.b = Math.max(2, mk.b); }
   renderMake();
 });
+for (const [id, key] of [['pickWho', 'who'], ['pickWho2', 'who2'], ['pickThing', 'thing']])
+  $(id).addEventListener('click', e => {
+    const b = e.target.closest(`[data-${key}]`); if (!b) return;
+    mk[key] = Number(b.dataset[key]); Sound.number(); renderMake();
+  });
+
+const clampNum = n => Math.max(1, Math.min(Share.MAX_NUM || 100, Math.round(n) || 1));
+$('numA').addEventListener('input', () => { mk.a = clampNum(Number($('numA').value)); renderMake(); });
+$('numB').addEventListener('input', () => { mk.b = clampNum(Number($('numB').value)); renderMake(); });
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-step]'); if (!b) return;
+  const [which, dir] = [b.dataset.step[0], b.dataset.step[1]];
+  mk[which] = clampNum(mk[which] + (dir === '+' ? 1 : -1));
+  Sound.number(); renderMake();
+});
+
 $('makeBtn').onclick = () => { track('make-open'); showMake(); };
 $('makeBack').onclick = showRoad;
 
+function madeProblem(extra = {}) {
+  const p = Share.compose(mk);
+  return hydrate({ id: 'made-' + Math.random().toString(36).slice(2, 8),
+                   authored: true, ...p, ...extra });
+}
+
 $('makeTry').onclick = () => {
-  const made = madeProblem();
-  state.world = 'add-join';
-  state.band = bandsFor('add-join')[0];
+  const p = madeProblem({ mine: true });
+  state.world = p.concept;
+  state.band = bandsFor(p.concept)[0];
   state.mode = 'main';
   state.queue = [];
   $('makeScreen').classList.add('hidden');
-  $('playScreen').classList.remove('hidden');
+  $('playScreen').classList.remove('hidden'); $('tabs').classList.add('hidden');
   $('homeBtn').classList.remove('hidden');
-  loadProblem(hydrate({ id: 'mine-' + Math.random().toString(36).slice(2, 8),
-                        concept: 'add-join', authored: true, mine: true,
-                        text: made.text, correct: made.correct, accept: [], traps: {} }));
+  loadProblem(p);
 };
 
 $('makeSend').onclick = () => {
-  const made = madeProblem();
-  const url = Share.shareUrl(location.origin, Share.packAuthored({ ...made, name: ME.name }));
+  const url = Share.shareUrl(location.origin, Share.packBuilt(mk, ME.name));
   $('shareTitle').textContent = 'Your puzzle is ready';
   $('shareSub').textContent = 'Send this link and your friend can play it straight away.';
   $('shareLink').value = url;
@@ -432,7 +410,7 @@ function renderLiked() {
   const ids = (P.liked || []).slice(-8).reverse();
   const found = ids.map(id => problemById(id)).filter(Boolean);
   if (!found.length) {
-    el.innerHTML = '<span class="muted">Tap the ❤️ on a puzzle you enjoy and it will wait here for you to send on.</span>';
+    el.innerHTML = '<span class="muted">Nothing here yet.</span>';
     return;
   }
   el.innerHTML = found.map(p =>
@@ -457,7 +435,7 @@ function renderFriends() {
   const el = $('friendList');
   const list = (P.friends || []).slice().sort((a, b) => b.seen - a.seen);
   if (!list.length) {
-    el.innerHTML = '<span class="muted">No puzzles from friends yet. Send one first — names show up here when a friend sends one back.</span>';
+    el.innerHTML = '<span class="muted">Nobody yet — send a puzzle to someone and they can send one back.</span>';
     return;
   }
   el.innerHTML = list.map(f =>
@@ -639,6 +617,9 @@ const gradeOptions = (sel = '') =>
 
 function showParents() {
   Speech.stop();
+  $('makeScreen') && $('makeScreen').classList.add('hidden');
+  $('tabs').classList.remove('hidden');
+  markTab('parents');
   $('roadScreen').classList.add('hidden');
   $('playScreen').classList.add('hidden');
   $('whoModal').classList.add('hidden');
@@ -659,7 +640,10 @@ async function renderParents() {
     $('pMsg').className = '';
     $('pMsg').textContent = 'Accounts are not switched on for this copy of the app. '
       + 'Players still work — they are kept on this device.';
-    $('pEmail').disabled = $('pSend').disabled = true;
+    // #pSend went away with the duplicate sign-in form; disable what is actually
+    // on the page, or the whole grown-ups screen throws before it finishes drawing.
+    for (const id of ['pEmail', 'pPass', 'pSignIn', 'pSignUp', 'pLinkInstead'])
+      if ($(id)) $(id).disabled = true;
   }
   $('pNewGrade').innerHTML = gradeOptions();
   if (!inn) return;
@@ -709,7 +693,33 @@ async function renderParents() {
 }
 
 $('pGoogle').onclick = () => Cloud.signInWithGoogle();
-$('parentsBtn').onclick = showParents;
+/* --------------------------------- tabs ------------------------------------- */
+// Three destinations, always on screen. The map is the default because it is what
+// the game is; the other two used to sit under it, which meant they did not exist.
+
+function showTab(name) {
+  if (name === 'parents') { showParents(); return; }
+  if ($('parentScreen').classList.contains('hidden') === false ||
+      $('playScreen').classList.contains('hidden') === false ||
+      $('makeScreen').classList.contains('hidden') === false) showRoad();
+  $('tabMap').classList.toggle('hidden', name !== 'map');
+  $('tabSocial').classList.toggle('hidden', name !== 'social');
+  if (name === 'social') { renderLiked(); renderFriends(); }
+  // The road is drawn from a measured width, and a hidden element measures zero,
+  // so it has to be redrawn on the way in rather than on the way out.
+  if (name === 'map') renderRoad();
+  markTab(name);
+}
+
+function markTab(name) {
+  for (const b of document.querySelectorAll('#tabs .tab'))
+    b.classList.toggle('on', b.dataset.tab === name);
+}
+
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('[data-tab]');
+  if (b) { track('tab', b.dataset.tab); showTab(b.dataset.tab); }
+});
 $('parentBack').onclick = showRoad;
 
 async function useCredentials(kind) {
@@ -820,6 +830,8 @@ function showRoad() {
   document.documentElement.style.removeProperty('--world');
   document.documentElement.style.removeProperty('--world-glow');
   $('makeScreen').classList.add('hidden');
+  $('tabs').classList.remove('hidden');
+  if ($('tabSocial').classList.contains('hidden')) markTab('map'); else markTab('social');
   renderRoad();
   renderLiked();
   renderFriends();
@@ -1017,7 +1029,7 @@ function startBand(concept, bandId, opts = {}) {
   state.challenge = opts.challenge ? { left: TEST_OUT_REQUIRED } : null;
   buildQueue();
   $('roadScreen').classList.add('hidden');
-  $('playScreen').classList.remove('hidden');
+  $('playScreen').classList.remove('hidden'); $('tabs').classList.add('hidden');
   $('homeBtn').classList.remove('hidden');
   nextProblem();
 }

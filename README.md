@@ -464,8 +464,8 @@ grown-up-facing work goes late.
 |---|---|---|
 | **Sat 5 Sept** | Levels and stars made legible + the branching map. Surface the reasoning trace — Pip says what he noticed about *how* they worked, which is the one thing rules cannot do. | ✅
 | **Sun 6 Sept** | Finish deploy. **Public git repo, LICENSE, and the submission assets**: a live URL, the written entry, and `/api/selftest` plus all four test suites shown in the README. | ✅
-| **Mon 7 Sept** (holiday) | **Decide the safety policy on child-authored problems.** This is one decision, not a build task — see the rule below. Then playtest prep. | 🔄
-| **Tue-Fri 8-11 Sept** | **Make and share problems.** Child-facing, so it has to clear the 11 Sept freeze or it cannot be playtested at all. Test the whole app end to end with the household tester. Write the video script. | ⏳
+| **Mon 7 Sept** (holiday) | **Decide the safety policy on child-authored problems.** Decided: **fill-in-the-blanks only, no free prose.** Built on the 8th — see below. | ✅
+| **Tue-Fri 8-11 Sept** | **Make and share problems and Parent mode** — built. Remaining: end-to-end test with the household tester, and the video script. | 🔄
 | **Sat-Sun 12-13 Sept** | Playtest with his friends. **Film it** (with their parents' permission). Come back with the four numbers below. | ⏳
 | **Mon-Wed 14-16 Sept** | Bug fixes and at most two feedback features. **Parent mode** — grown-up-facing, no child can reach it, so this is the right place for it. Cut and finish the video. | ⏳
 | **Thu 17 Sept** | Submit. | ⏳
@@ -531,6 +531,62 @@ socket address is loopback there; the magic link **landed on the star map** beca
 in triggers a reload that threw away why you were there; and signing in on a device that
 already had "Ava" **created a second Ava**.
 
+## Shipped on 8 Sept — puzzles that travel, and the safety decision behind them
+
+**The decision first, because it changed the build.** The 7 Sept item was one choice:
+either child authoring is narrowed to fill-in-the-blanks, or the feature waits until after
+the hackathon. It is narrowed. A first pass at free prose with a word blocklist was written
+and then thrown away, and it is worth saying why, because the version that got deleted is
+the one most people would ship:
+
+- A blocklist matches whole English words from a fixed list. Misspellings, spacing, other
+  languages and ordinary unkindness — *"nobody likes you"* — walk straight through it.
+- The puzzle travels **in the link**, which is the feature's whole appeal. That also means an
+  adult can hand-write a link and send it to a child. Re-checking on arrival helps only as
+  much as the check itself is worth, and the check was a word list.
+- It is client-side. Nothing is logged, nothing is reviewable, nobody is on call.
+
+So **the child never types prose.** They choose a *shape*, choose the words from fixed
+lists, and choose the numbers. The link carries a shape index, two word indices and two
+numbers — 64 characters — and checking one on arrival is bounds-checking six integers.
+There is no string in it that could say anything. `test/share.mjs` states the guarantee
+directly: whatever a link says, what comes out is a puzzle **the app itself would have
+built**.
+
+This costs nothing pedagogically, and it buys something free prose could never have had:
+
+- The hard part of composing a word problem is picking the structure and the numbers —
+  deciding that "8 boxes of 3" is a multiplication and that 8 and 3 make it worth solving —
+  not writing the sentence. The maker names the numbers by what they *mean* in the chosen
+  shape (*"how many boxes"*, *"in each box"*), which is the lesson.
+- Because the shape is known, **an authored puzzle inherits the whole diagnosis layer**. A
+  friend who adds when they should multiply gets the *added instead of seeing equal groups*
+  reply — on a puzzle their friend invented. Free prose would have fallen back to marking it
+  right or wrong. The traps come from the generator's own `modelFor`, not a second copy, so
+  the two cannot drift apart.
+- Nonsense is refused while they build it, not after they press send: giving away more than
+  you had, sharing 7 between 2, comparing two equal piles. A child told "no" at the end just
+  stops making puzzles.
+
+What else shipped:
+
+- **Sharing, both ways round.** An app-made puzzle packs into 56 characters because a
+  generated id already *is* the problem. No database row, no account on either side, and a
+  friend who has never opened MathQuest can play it.
+- **Hearts.** A liked puzzle comes back as a one-tap *send this one*, which is "I did one I
+  liked and sent it on" without making them find it again.
+- **Friends** are the children who actually sent you something. A name appears because a
+  link arrived, and it can be forgotten in one tap. No graph, no requests, nothing to
+  moderate. The only free-text field left anywhere in sharing is the sender's own player
+  name, which a parent typed; it is stripped to letters so a name cannot become a sentence.
+- **A shared puzzle claims no level** — no stars, no *"1 more → ★"* over someone's home-made
+  problem, and no minting stars by sending yourself `1 + 1`.
+- **Three tabs at the top**, not cards down the page. Puzzles & friends and the grown-ups
+  page were under a full-height star map, which is the same as not existing.
+- **Sync follows the child, not the device.** Progress already uploaded on every save when a
+  parent is signed in; it now also flushes when the tab goes away (`keepalive`, so the last
+  few answers are not killed mid-flight) and pulls when it comes back.
+
 ## To do
 
 - [x] ~~**Switch the AI layer on**~~ — live on Gemini. Word help and the starting nudges are
@@ -572,20 +628,13 @@ already had "Ava" **created a second Ava**.
       road winds but is identical on every render. `roadtest.py` asserts that no two stops
       overlap and that every stop sits on the drawn road.
 
-- [ ] **Let the child WRITE problems, and swap them with friends.** Asked for by the tester
-      himself: he wants to make up his own word problems, send them to his friends to solve,
-      and solve theirs. Notes:
-      - Composing a word problem requires understanding its structure far more deeply than
-        solving one does. This is the strongest learning idea in the project so far.
-      - It fits the existing data model almost exactly: a problem is `[[value|meaning]]` text
-        plus `correct` plus `traps`. A child-authored problem is the same object.
-      - Pip should help author: check it is solvable, check every number is marked, and
-        generate the trap table so the author's problem can diagnose its solver.
-      - SHARING WITHOUT A BACKEND: encode the problem into a share link or a short code the
-        friend types. No accounts, no database, no hosted user content — most of the value,
-        a fraction of the risk and the build.
-      - SAFETY: text written by one child and shown to another needs a check before it is
-        shown, even over a direct link. Decide this before shipping it to anyone else's child.
+- [x] ~~**Let the child WRITE problems, and swap them with friends.**~~ Done, as
+      fill-in-the-blanks rather than free writing — see *Shipped on 8 Sept* for the decision
+      and why the free-prose version was deleted. The tester's own request. What was kept
+      from the original notes: the problem a child builds is the same object as every other
+      problem (`[[value|meaning]]` text plus `correct` plus `traps`), the trap table is
+      generated so the author's puzzle can diagnose its solver, and sharing needs no backend
+      at all. What changed: Pip does not help author free text, because there is no free text.
 
 - [x] ~~**Levels and stars are not self-explanatory to a child.**~~ Done, by deleting one of
       the two currencies. The XP bar and level number are gone from the UI — a seven-year-old
