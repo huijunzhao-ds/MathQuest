@@ -1,9 +1,10 @@
-import { allProblems, problemsFor, bandsFor, bandOfProblem, diagnose, CONCEPTS, MISCONCEPTIONS } from '/shared/engine.js';
+import { allProblems, problemsFor, bandsFor, bandOfProblem, diagnose, hydrate, problemById, safeEval, CONCEPTS, MISCONCEPTIONS } from '/shared/engine.js';
 import { Sound, confetti, flyChip, pulse, Pip } from '/juice.js';
 import { Speech } from '/speech.js';
 import { lookupWord, START_LADDER } from '/shared/dictionary.js';
 import * as Profiles from '/shared/profiles.js';
 import * as Cloud from '/cloud.js';
+import * as Share from '/shared/share.js';
 import { canExplain, mountExplainer, canShowSituation, mountSituation } from '/mathviz.js';
 import {
   MAP_POS, MAP_ROWS, PREREQS, bandKey, bandStat, bandStars, nextStar,
@@ -57,7 +58,9 @@ function save() {
 
 const blankProgress = () => ({
   xp: 0, streakDays: 0, bestStreak: 0, lastPlayed: null,
-  concepts: {}, bands: null, testedOut: {}, solvedIds: [], misconceptions: {}
+  concepts: {}, bands: null, testedOut: {}, solvedIds: [], misconceptions: {},
+  liked: [],      // puzzle ids this child gave a heart to
+  friends: []     // names of people whose puzzles they have opened: [{name, seen}]
 });
 // migrate() folds progress saved before stars moved to difficulty levels into
 // each world's first level, so nobody gets locked out of what they already earned.
@@ -121,7 +124,7 @@ function makeStars(n = 70) {
 
 async function boot() {
   makeStars();
-  Pip.mount($('pip'), $('pipHome'));
+  Pip.mount($('pip'), $('pipHome'), $('pipMake'));
   renderHeader();
   if (!Speech.canSpeak) $('readBtn').classList.add('hidden');
   if (Speech.canListen) $('micBtn').classList.remove('hidden');
@@ -137,6 +140,22 @@ async function boot() {
   };
   try { state.ai = (await (await fetch('/api/status')).json()).ai; } catch {}
   showRoad();
+
+  // A puzzle sent by a friend jumps the queue: that link is the reason they
+  // opened the app, so it should not land them on the map to go hunting.
+  const sent = puzzleFromLink();
+  if (sent && sent.bad) {
+    setTimeout(() => { $('heroMsg').textContent = sent.bad; }, 50);
+  } else if (sent && sent.problem) {
+    state.world = sent.problem.concept;
+    state.band = bandsFor(state.world)[0];
+    state.mode = 'main';
+    state.queue = [];
+    $('roadScreen').classList.add('hidden');
+    $('playScreen').classList.remove('hidden');
+    $('homeBtn').classList.remove('hidden');
+    loadProblem(sent.problem);
+  }
 
   // Anything to do with the account happens AFTER the game is on screen, and
   // never blocks it. A parent signing in on a new phone gets their children
@@ -174,6 +193,283 @@ function renderHeader() {
   $('soundBtn').innerHTML = Sound.on ? SPEAKER_ON : SPEAKER_OFF;
   $('soundBtn').classList.toggle('off', !Sound.on);
 }
+
+/* ================================ SHARING ==================================== */
+// A shared puzzle travels IN THE LINK: no row in a database, no account on either
+// side. A child can send one to a friend who has never opened the app, and it
+// works the moment it is deployed rather than after a sign-up flow.
+
+function shareCurrent() {
+  const p = state.current;
+  if (!p) return;
+  const code = p.authored
+    ? Share.packAuthored({ text: p.text, correct: p.correct, name: ME.name })
+    : Share.packExisting(p.id, ME.name);
+  const url = Share.shareUrl(location.origin, code);
+  $('shareTitle').textContent = p.authored ? 'Send your puzzle to a friend' : 'Send this puzzle to a friend';
+  $('shareSub').textContent = p.authored
+    ? 'They will see you made it.'
+    : 'They get the same puzzle you just did.';
+  $('shareLink').value = url;
+  $('shareModal').classList.remove('hidden');
+  track('share', p.id);
+}
+
+$('shareCopy').onclick = async () => {
+  const el = $('shareLink');
+  el.select();
+  try { await navigator.clipboard.writeText(el.value); $('shareCopy').textContent = 'Copied'; }
+  catch { document.execCommand && document.execCommand('copy'); $('shareCopy').textContent = 'Copied'; }
+  setTimeout(() => { $('shareCopy').textContent = 'Copy the link'; }, 1800);
+};
+$('shareDone').onclick = () => $('shareModal').classList.add('hidden');
+
+/** Someone sent a puzzle. Returns the problem to play, or null. */
+function puzzleFromLink() {
+  const code = new URLSearchParams(location.search).get('p');
+  if (!code) return null;
+  history.replaceState(null, '', location.pathname);   // so a reload is not a loop
+  const got = Share.unpack(code);
+  if (!got) return { bad: 'That link is damaged — ask your friend to send it again.' };
+  if (got.kind === 'rejected') return { bad: got.why };
+  if (got.from) rememberFriend(got.from);
+
+  if (got.kind === 'existing') {
+    const p = problemById(got.id);
+    return p ? { problem: { ...p, from: got.from }, from: got.from } : { bad: 'That puzzle is from a newer version of the game.' };
+  }
+  // A child wrote this one. It carries no trap table, so diagnosis falls back to
+  // the generic checks — the equation is still marked properly.
+  const raw = { id: 'shared-' + Math.random().toString(36).slice(2, 8),
+                concept: 'add-join', authored: true, from: got.from,
+                text: got.text, correct: got.correct, accept: [], traps: {} };
+  return { problem: hydrate(raw), from: got.from };
+}
+
+function rememberFriend(name) {
+  const clean = String(name || '').trim().slice(0, 24);
+  if (!clean) return;
+  P.friends = P.friends || [];
+  const f = P.friends.find(x => x.name.toLowerCase() === clean.toLowerCase());
+  if (f) f.seen = Date.now(); else P.friends.push({ name: clean, seen: Date.now() });
+  save();
+}
+
+/* --------------------------------- likes ------------------------------------ */
+// A heart is a nudge, not a score: it says "this one was good", which is what a
+// child actually wants to tell a friend, and it costs nothing to be wrong about.
+
+const isLiked = id => (P.liked || []).includes(id);
+function toggleLike(id) {
+  P.liked = P.liked || [];
+  const i = P.liked.indexOf(id);
+  if (i >= 0) P.liked.splice(i, 1); else { P.liked.push(id); Sound.star(); }
+  save();
+  return isLiked(id);
+}
+
+/* ============================= PUZZLE MAKER =================================== */
+// A child writes a story in plain words with plain numbers. The markup the engine
+// wants ([[12|stickers]]) is derived, never typed: asking a seven-year-old to type
+// double brackets is asking them to stop being a seven-year-old.
+
+const mk = { eq: [], nums: [] };
+
+/** The word after a number is what that number counts. Good enough, and invisible.
+ *  The label is PEEKED, never consumed — the noun has to stay in the sentence, or
+ *  "12 stickers" comes out the other end as a bare "12". */
+const STOPWORD = /^(to|of|in|on|at|and|or|the|a|an|from|for|more|less|left|each|every|his|her|their|my|your|its|them|is|are|was|were)$/i;
+function storyNumbers(text) {
+  const out = [];
+  const re = /\d+/g;
+  let m, i = 0;
+  while ((m = re.exec(text)) !== null) {
+    const after = text.slice(m.index + m[0].length);
+    let label = (after.match(/^\s+([A-Za-z][A-Za-z'-]*)/) || [])[1] || '';
+    if (STOPWORD.test(label)) label = '';
+    out.push({ value: Number(m[0]), label: label || 'in the story', short: label,
+               at: m.index, len: m[0].length, qid: i++ });
+  }
+  return out;
+}
+
+/** Plain typing in, engine markup out. */
+function storyMarkup(text) {
+  const nums = storyNumbers(text);
+  let out = '', last = 0;
+  for (const n of nums) {
+    out += text.slice(last, n.at) + `[[${n.value}|${n.label}]]`;
+    last = n.at + n.len;
+  }
+  return out + text.slice(last);
+}
+
+function showMake() {
+  Speech.stop();
+  $('roadScreen').classList.add('hidden');
+  $('playScreen').classList.add('hidden');
+  $('parentScreen').classList.add('hidden');
+  $('makeScreen').classList.remove('hidden');
+  $('homeBtn').classList.add('hidden');
+  document.documentElement.style.removeProperty('--world');
+  Pip.set('idle');
+  renderMake();
+}
+
+function renderMake() {
+  const text = $('makeText').value;
+  $('makeCount').textContent = text.trim().length;
+  mk.nums = storyNumbers(text);
+
+  // Numbers that left the story cannot stay in the equation.
+  const live = new Set(mk.nums.map(n => n.value));
+  mk.eq = mk.eq.filter(t => t.kind !== 'num' || live.has(t.value));
+
+  const pad = $('makeNums');
+  pad.innerHTML = '';
+  if (!mk.nums.length) {
+    pad.innerHTML = '<span class="muted">Type some numbers in your story and they will show up here.</span>';
+  }
+  const seen = new Set();
+  for (const n of mk.nums) {
+    if (seen.has(n.value)) continue;
+    seen.add(n.value);
+    const b = document.createElement('button');
+    b.className = 'mknum';
+    b.dataset.mnum = String(n.value);
+    b.innerHTML = n.short ? `${n.value}<small>${esc(n.short)}</small>` : String(n.value);
+    pad.appendChild(b);
+  }
+
+  const strip = $('makeEq');
+  strip.innerHTML = '';
+  strip.classList.toggle('empty', !mk.eq.length);
+  for (const t of mk.eq) {
+    const el = document.createElement('span');
+    el.className = 'chip' + (t.kind === 'op' ? ' op' : t.kind === 'paren' ? ' paren' : '');
+    el.textContent = DISPLAY[t.value] ?? t.value;
+    strip.appendChild(el);
+  }
+
+  const eq = mk.eq.map(t => t.value).join('');
+  const val = mk.eq.length >= 3 ? safeEval(eq) : null;
+  $('makeAnswer').innerHTML = (val === null || val === undefined || Number.isNaN(val))
+    ? ''
+    : `Your answer comes out as <b>${val}</b>. Is that right for your story?`;
+
+  // Say what is still missing while they type, not after they press send: a child
+  // who is told "no" at the end just stops making puzzles.
+  const verdict = Share.check(storyMarkup(text), eq);
+  const ready = verdict.ok && val !== null && Number.isFinite(val) && val >= 0;
+  $('makeWhy').textContent = verdict.ok
+    ? (ready ? 'Looks good — ready to send.' : 'That equation does not work out to a whole amount yet.')
+    : verdict.why;
+  $('makeWhy').classList.toggle('good', ready);
+  $('makeSend').disabled = !ready;
+  $('makeTry').disabled = !ready;
+}
+
+function madeProblem() {
+  const text = storyMarkup($('makeText').value.trim());
+  const eq = mk.eq.map(t => t.value).join('');
+  return { text, correct: eq };
+}
+
+$('makeText').addEventListener('input', renderMake);
+$('makeNums').addEventListener('click', e => {
+  const b = e.target.closest('[data-mnum]');
+  if (!b) return;
+  mk.eq.push({ kind: 'num', value: Number(b.dataset.mnum) });
+  Sound.number(); renderMake();
+});
+$('makeOps').addEventListener('click', e => {
+  const b = e.target.closest('[data-mop]');
+  if (!b) return;
+  const op = b.dataset.mop;
+  if (op === 'undo') mk.eq.pop();
+  else if (op === 'clear') mk.eq = [];
+  else mk.eq.push({ kind: op === '(' || op === ')' ? 'paren' : 'op', value: op });
+  (op === 'undo' || op === 'clear') ? Sound.undo() : Sound.operator();
+  renderMake();
+});
+$('makeBtn').onclick = () => { track('make-open'); showMake(); };
+$('makeBack').onclick = showRoad;
+
+$('makeTry').onclick = () => {
+  const made = madeProblem();
+  state.world = 'add-join';
+  state.band = bandsFor('add-join')[0];
+  state.mode = 'main';
+  state.queue = [];
+  $('makeScreen').classList.add('hidden');
+  $('playScreen').classList.remove('hidden');
+  $('homeBtn').classList.remove('hidden');
+  loadProblem(hydrate({ id: 'mine-' + Math.random().toString(36).slice(2, 8),
+                        concept: 'add-join', authored: true, mine: true,
+                        text: made.text, correct: made.correct, accept: [], traps: {} }));
+};
+
+$('makeSend').onclick = () => {
+  const made = madeProblem();
+  const url = Share.shareUrl(location.origin, Share.packAuthored({ ...made, name: ME.name }));
+  $('shareTitle').textContent = 'Your puzzle is ready';
+  $('shareSub').textContent = 'Send this link and your friend can play it straight away.';
+  $('shareLink').value = url;
+  $('shareModal').classList.remove('hidden');
+  track('share-made');
+};
+
+/* -------------------------------- friends ----------------------------------- */
+// "Friends" here means the children who have actually sent you a puzzle. There is
+// no server-side graph, no requests to accept, and nothing for an adult to
+// moderate: a name appears because a link arrived, and it can be forgotten.
+
+// A heart is only worth having if it leads somewhere. The puzzles a child liked
+// come back as one-tap "send this one" chips, which is scenario 1 without asking
+// them to find the puzzle again.
+function renderLiked() {
+  const el = $('likedList');
+  const ids = (P.liked || []).slice(-8).reverse();
+  const found = ids.map(id => problemById(id)).filter(Boolean);
+  if (!found.length) {
+    el.innerHTML = '<span class="muted">Tap the ❤️ on a puzzle you enjoy and it will wait here for you to send on.</span>';
+    return;
+  }
+  el.innerHTML = found.map(p =>
+    `<button class="likedchip" data-send="${esc(p.id)}">
+       <span>${esc(p.plainText.slice(0, 58))}${p.plainText.length > 58 ? '…' : ''}</span>
+       <b>Send →</b></button>`).join('');
+}
+$('likedList').addEventListener('click', e => {
+  const b = e.target.closest('[data-send]');
+  if (!b) return;
+  const p = problemById(b.dataset.send);
+  if (!p) return;
+  const url = Share.shareUrl(location.origin, Share.packExisting(p.id, ME.name));
+  $('shareTitle').textContent = 'Send this puzzle to a friend';
+  $('shareSub').textContent = 'One you liked — they get exactly the same one.';
+  $('shareLink').value = url;
+  $('shareModal').classList.remove('hidden');
+  track('share-liked', p.id);
+});
+
+function renderFriends() {
+  const el = $('friendList');
+  const list = (P.friends || []).slice().sort((a, b) => b.seen - a.seen);
+  if (!list.length) {
+    el.innerHTML = '<span class="muted">No puzzles from friends yet. Send one first — names show up here when a friend sends one back.</span>';
+    return;
+  }
+  el.innerHTML = list.map(f =>
+    `<span class="friend"><b>${esc(f.name)}</b><button data-drop="${esc(f.name)}" title="Forget">×</button></span>`
+  ).join('');
+}
+$('friendList').addEventListener('click', e => {
+  const b = e.target.closest('[data-drop]');
+  if (!b) return;
+  P.friends = (P.friends || []).filter(f => f.name !== b.dataset.drop);
+  save(); renderFriends();
+});
 
 /* ============================== WHO IS PLAYING ================================ */
 // Switching child must be one tap from the header. After a switch the page is
@@ -234,6 +530,7 @@ function cloudPush() {
   if (!Cloud.signedIn() || !ME.remote) return;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
+    pushTimer = null;
     syncState = 'saving'; renderSync();
     const ok = await Cloud.saveChild(ME.remote, { progress: P });
     // A failed save is never reported as a save. The local copy is untouched
@@ -241,6 +538,27 @@ function cloudPush() {
     syncState = ok ? 'saved' : 'failed'; renderSync();
   }, 1500);
 }
+
+/** Send now, not in 1.5 seconds. Used when the tab is about to go away. */
+function cloudFlush() {
+  if (!Cloud.signedIn() || !ME.remote || !pushTimer) return;
+  clearTimeout(pushTimer); pushTimer = null;
+  // keepalive lets the request outlive the page; a normal fetch would be killed
+  // mid-flight and the last few answers would only exist on this device.
+  Cloud.saveChild(ME.remote, { progress: P }, { keepalive: true });
+}
+
+// Device independence is not just "it uploads". A child who plays on the iPad and
+// then picks up the laptop that has been open since breakfast needs the laptop to
+// notice. So: flush when the tab goes away, pull when it comes back.
+let lastPull = Date.now();
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { cloudFlush(); return; }
+  if (Date.now() - lastPull < 20000) return;    // tab-switching is not a sync event
+  lastPull = Date.now();
+  cloudPull().catch(() => {});
+});
+window.addEventListener('pagehide', cloudFlush);
 
 /** Take the account's copy only if it is genuinely newer than this device's. */
 async function cloudPull() {
@@ -501,7 +819,10 @@ function showRoad() {
   $('homeBtn').classList.add('hidden');
   document.documentElement.style.removeProperty('--world');
   document.documentElement.style.removeProperty('--world-glow');
+  $('makeScreen').classList.add('hidden');
   renderRoad();
+  renderLiked();
+  renderFriends();
   Pip.set('idle');
 }
 
@@ -808,12 +1129,27 @@ function loadProblem(p) {
 
   const stat = state.band ? bandStat(P, state.world, state.band.id) : { solved: 0, firstTry: 0 };
   const nxt = state.mode === 'practice' ? null : nextStar(stat);
+  // A puzzle a friend wrote belongs to no level, so it must not claim one: showing
+  // "Twin Moons · Up to 10 · 1 more → ★" over someone's home-made problem promises
+  // a star that will never arrive.
+  const loose = p.authored;
   $('youarehere').innerHTML = `<button class="backbtn" id="backBtn">← Star map</button>
-    <span class="wherechip">${state.mode === 'practice' ? 'Practice' : c.icon + esc(c.label)}</span>
-    ${state.band && state.mode !== 'practice' ? `<span class="whereband">${esc(state.band.label)}</span>` : ''}
-    <span class="wherestars">${stars3(bandStars(stat))}</span>
-    ${nxt ? `<span class="wherenext">${esc(nxt.text)}</span>` : ''}`;
+    ${loose
+      ? `<span class="wherechip">${p.mine ? '✏️ My puzzle' : '🎁 From a friend'}</span>`
+      : `<span class="wherechip">${state.mode === 'practice' ? 'Practice' : c.icon + esc(c.label)}</span>
+         ${state.band && state.mode !== 'practice' ? `<span class="whereband">${esc(state.band.label)}</span>` : ''}
+         <span class="wherestars">${stars3(bandStars(stat))}</span>
+         ${nxt ? `<span class="wherenext">${esc(nxt.text)}</span>` : ''}`}
+    <button class="likebtn ${isLiked(p.id) ? 'on' : ''}" id="likeBtn"
+            title="Like this puzzle" aria-label="Like this puzzle">❤️</button>`;
   $('backBtn').onclick = showRoad;
+  $('likeBtn').onclick = e => e.currentTarget.classList.toggle('on', toggleLike(p.id));
+
+  const banner = $('fromFriend');
+  if (p.from) {
+    banner.innerHTML = `<span>🎁</span><span><b>${esc(p.from)}</b> sent you this puzzle.</span>`;
+    banner.classList.remove('hidden');
+  } else banner.classList.add('hidden');
   $('storyLabel').textContent = state.challenge
     ? `Challenge — ${state.challenge.left} to go`
     : state.mode === 'practice' ? 'Try this one' : 'The story';
@@ -1171,7 +1507,10 @@ function onCorrect(diag) {
   touchStreak();
   const c = state.current.concept;
   const clean = state.attempts === 1 && !state.usedHelp;
-  const practice = state.mode === 'practice';
+  // A friend's puzzle, or one the child wrote, is not part of any level: it is
+  // played for the pleasure of it. Counting it would let a child mint stars by
+  // writing "1 + 1 = ?" and sending it to themselves.
+  const practice = state.mode === 'practice' || !!state.current.authored;
   const band = state.band;
 
   // Practice problems are remedial and deliberately easier, so they build the
@@ -1255,6 +1594,9 @@ function onCorrect(diag) {
     ribbon(`Star earned — ${starsNow} of 3 on ${band.label}`, true);
   } else {
     const n = bStat && !practice ? nextStar(bStat) : null;
+    if (state.current.authored)
+      ribbon(state.current.from ? `You solved ${state.current.from}'s puzzle` : 'Your puzzle works', true);
+    else
     ribbon(n ? n.text.replace(' → ', ' to get ')
              : (bStat && !practice ? `${band.label} is all yours — try a harder level`
                                    : (clean ? 'Straight there' : 'You worked it out')), true);
@@ -1269,13 +1611,18 @@ function onCorrect(diag) {
   } else if (!clean && state.lastMisconception) {
     addAction('Practice this idea', 'primary', () => startPractice(state.lastMisconception));
     addAction('Next problem', 'ghost', nextProblem);
+    addAction('Send to a friend', 'ghost', shareCurrent);
   } else if (starsNow >= 3 && nextBand && bandUnlocked(P, c, bandIdx + 1)) {
     // There is nothing left to earn here. Point at the harder level rather than
     // letting a child grind a level they have already mastered.
     addAction(`Harder: ${nextBand.label} →`, 'primary', () => startBand(c, nextBand.id));
     addAction('One more here', 'ghost', nextProblem);
+  } else if (state.current.authored) {
+    addAction('Send to a friend', 'primary', shareCurrent);
+    addAction('Back to the map', 'ghost', showRoad);
   } else {
     addAction('Next problem →', 'primary', nextProblem);
+    addAction('Send to a friend', 'ghost', shareCurrent);
   }
 }
 

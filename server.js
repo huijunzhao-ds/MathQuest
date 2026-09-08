@@ -609,7 +609,9 @@ const server = http.createServer(async (req, res) => {
       if (/already registered|already been registered/i.test(b))
         return 'There is already an account with that email. Try signing in instead.';
       if (/Email not confirmed/i.test(b))
-        return 'That account still needs confirming by email. Turn off "Confirm email" in Supabase, or use the emailed link.';
+        return 'That account was made while Supabase still required email confirmation. Turn off '
+             + '"Confirm email" (Authentication → Providers → Email), then delete this user under '
+             + 'Authentication → Users and create the account again.';
       if (/Invalid login credentials/i.test(b)) return 'That email and password do not match.';
       if (/Password should be|weak|at least/i.test(b)) return 'That password is too short — use at least 8 characters.';
       if (status === 429 || /rate limit/i.test(b)) return 'Too many attempts just now. Wait a minute and try again.';
@@ -634,8 +636,10 @@ const server = http.createServer(async (req, res) => {
       const j = r.json || {};
       if (signup && !j.access_token) {
         return json(res, 200, { needsConfirmation: true,
-          error: 'Account made, but Supabase wants it confirmed by email. Turn off "Confirm email" '
-               + 'in Authentication → Providers → Email so people can sign in straight away.' });
+          error: 'Account made, but Supabase wants it confirmed by email — and the built-in sender '
+               + 'allows only two an hour, so that email may never arrive. Turn off "Confirm email" '
+               + 'in Authentication → Providers → Email, then press Sign in. If it still refuses, '
+               + 'delete the half-made user under Authentication → Users and create it again.' });
       }
       if (!j.access_token) return json(res, 502, { error: 'No session came back. Try again.' });
       return json(res, 200, { access_token: j.access_token, refresh_token: j.refresh_token,

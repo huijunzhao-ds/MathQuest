@@ -1,6 +1,6 @@
 # MathQuest
 
-A word-problem game for ages 7–10 that responds to **how a child is thinking**, not just
+A word-problem game for K-5 students that responds to **how a child is thinking**, not just
 whether the answer is right — and that gets out of the way when the barrier is reading
 rather than maths.
 
@@ -9,47 +9,112 @@ reward currency, one sky-blue action colour. The five concepts are places on the
 Twin Moons, Comet Trail, Star Cluster, Ring Belt, Nebula Gate. Every icon is drawn inline
 as SVG, so nothing depends on emoji fonts.
 
+**Play it:** <https://mathquest-czoy.onrender.com>
+
 Built for the Nerdy AI hackathon, K–5 Math Game prompt.
 
 ## Run it
 
 ```bash
-cd ~/Desktop/MathQuest
-npm start          # → http://localhost:5173
+git clone https://github.com/huijunzhao-ds/mathquest.git
+cd mathquest
+npm start                 # → http://localhost:5173
 ```
 
-No install step, no dependencies, no build. Node 18+ only.
+Node 20 or newer. **No dependencies, no install step, no build.** `npm install` is a
+no-op — the whole thing is the standard library plus browser ES modules, which is why
+there is no lockfile and nothing to audit.
 
-### Turn on the live AI tutor
+**It works fully with no configuration at all.** Every puzzle, the diagnosis of *how*
+a child is thinking, the Socratic questions, the hints, the pictures, generated
+practice, the star map and the progression all run on built-in engines. Everything
+below is optional and adds to that floor rather than switching it on.
+
+```bash
+npm test                  # 5,280 problems, 1,070 arithmetic pictures, progression, profiles
+npm run dev               # the server again, restarting on every save
+```
+
+`npm run leaktest` is separate because it needs a live provider key: it makes ~22 real
+calls and fails both if Pip leaks the answer AND if he is merely evasive.
+
+### Optional: the live AI tutor
 
 ```bash
 cp .env.example .env      # put ONE provider key in it
-npm start                 # the banner tells you which provider it picked
+npm start                 # the banner says which provider it picked
 ```
 
-Three providers are supported and the app auto-detects whichever key is present —
-**Gemini** (free tier, no card to start), **Anthropic**, or **OpenAI**. Set `AI_PROVIDER`
-to force one when several keys exist. Adding a fourth is one adapter function in
-`server.js`; nothing else in the app knows which provider is in use.
+Three providers, auto-detected from whichever key is present — **Gemini**, **Anthropic**
+or **OpenAI**. `AI_PROVIDER` forces one when several exist. Adding a fourth is one
+adapter function in `server.js`; nothing else in the app knows which is in use.
 
-**If the model name is rejected.** Google retires Gemini models often, and the 404 body names
-the replacement. The server reads that, switches to it for the rest of the run, and prints the
-line to pin in `.env`. `GET /api/selftest` makes one real call and reports exactly what happened —
-a 404 there means you are talking to an older server process still holding the port.
+With a key, the model writes Pip's wording and the practice problems. **Correct answers
+and arithmetic slips never reach it** — the rule engine is certain about those, so they
+are answered instantly and for free (see *Where the model is allowed to be in the loop*).
 
-Two things worth knowing before you pick:
 
-- An **Anthropic API key is billed separately from a Claude Pro/Max subscription** — the
-  subscription does not include API access.
-- On Gemini's **free tier**, Google may use prompts and responses to improve its products,
-  and human reviewers may see them; paid-tier prompts are not. This app only ever sends the
-  problem text, the word tapped and the equation built — no names or account details — but
-  it is a children's app, so make that call deliberately.
+### Optional: parent accounts
 
-**Without a key the whole app still works.** Diagnosis, Socratic questions, hints, generated
-practice, word lookups and starting nudges all fall back to built-in engines, so a demo never
-depends on the network. With a key, Claude replaces the wording and writes the practice
-problems; if a call fails mid-session it falls back silently.
+Without this, players are kept in the browser and the grown-ups page says so. With it, a
+parent signs in and their children's progress follows them to any device.
+
+1. Create a project at [supabase.com](https://supabase.com), then run this in the SQL editor:
+
+```sql
+create table public.child (
+  id uuid primary key default gen_random_uuid(),
+  owner uuid not null references auth.users(id) on delete cascade,
+  name text not null check (char_length(name) between 1 and 24),
+  grade smallint,
+  grade_year smallint,
+  progress jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.child enable row level security;
+create policy "own children only" on public.child
+  for all using (auth.uid() = owner) with check (auth.uid() = owner);
+```
+
+   That last policy is the line that actually protects the data. Without it every row is
+   readable by anyone with the anon key.
+
+2. **Authentication → Providers → Email → turn "Confirm email" OFF.** Left on, every new
+   parent needs a confirmation email, and Supabase's built-in sender allows only **two an
+   hour** — which is fine for one person testing and useless for a room of parents. With it
+   off, signing up and signing in send no email at all.
+
+3. Put the **project URL** and the **anon** key in `.env`:
+
+```
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_ANON_KEY=eyJ...
+```
+
+   Both are public values. There is deliberately no `service_role` key: every database call
+   carries the signed-in parent's own token, so Postgres row level security decides what
+   they can reach. Paste the REST URL by mistake and the server trims it for you.
+
+4. Optional extras. `AUTH_GOOGLE=1` adds Google sign-in (needs an OAuth client in Google
+   Cloud with `https://<project>.supabase.co/auth/v1/callback` as the redirect, and the
+   provider enabled in Supabase). For the emailed-link option to work, add your origin to
+   **Authentication → URL Configuration → Redirect URLs** as `http://localhost:5173/**`.
+
+### Deploying it
+
+Any host that runs a Node process works; the server binds `0.0.0.0` and reads `PORT` from
+the environment. On Render: build `npm install`, start `npm start`, health check
+`/api/status`, and set the same environment variables — **never `PORT`**, which the host
+provides.
+
+Then add the deployed origin to Supabase's **Redirect URLs** and **Site URL**, or the
+emailed link silently falls back to Supabase's default site rather than your app.
+
+Two things a public link needs that a laptop does not, both already in place: the model
+endpoints carry a per-IP and global budget (`RATE_PER_IP`, `RATE_GLOBAL`) that degrades to
+the offline engines rather than erroring, and `/api/selftest` refuses any request that
+arrived through a proxy.
 
 ## What a child can do
 
@@ -138,6 +203,9 @@ road → pick a world → read story (or have it read) → stuck on a word? ask 
 | `public/shared/engine.js` | Expression parser, misconception catalogue, rule-based diagnosis, fallback problem generation. Runs in both browser and server. |
 | `public/shared/dictionary.js` | Offline word help — objects and, more importantly, the maths words that mislead. Plus the starting-nudge ladder. |
 | `public/app.js` | Road, story, equation builder, reasoning trace, Pip, feedback ladder, progression. |
+| `public/shared/profiles.js` | Who is playing. Per-profile storage keys, the migration from the old single key, and the school year — stamped once with the year it was set so it rolls forward each August instead of going stale. |
+| `test/profiles.mjs` | `npm run proftest` — the migration first, because losing a real child's progress is the worst bug this could have: a browser holding weeks of work under the old key has it moved into the first profile and **the old key is left untouched**. Then: two children on one browser keep separate roads, reset clears one road but not the child, linking to an account never touches progress, placeholder profiles are pruned only when a real child replaces them, and the school year rolls forward correctly and caps. |
+| `public/cloud.js` | The parent's account from the browser's side. Fails soft everywhere — no account, no wifi or an expired token all leave the game exactly as it is. Retries once on a 401, because an expired token is the normal case rather than an error, and scrubs the session token out of the address bar the moment it is read. |
 | `public/shared/progress.js` | What a star means, what unlocks what, and where the planets sit on the map. Pure functions, no DOM — because a progression that can dead-end is a bug you cannot find by clicking. |
 | `test/progress.mjs` | `npm run progtest` — plays simulated children through the whole progression. A child who always solves first time; **a child who never solves cleanly** (the dead-end test — gating on stars alone would have stranded exactly the child who needs the most help, so effort opens doors too); 300 random children checked for dead ends and for progress never going backwards; every "next star" promise checked against what the rules actually charge; and old saved progress checked to survive the move from per-world to per-level stars. |
 | `public/mathviz.js` | Draws the arithmetic when a child has the right equation but keeps miscounting: make ten, bridge back, arrays, equal sharing. Deterministic, no model call, no assets — absolutely-positioned divs animated with CSS transforms. |
@@ -226,45 +294,23 @@ collides with an accepted answer.
 
 A link anyone can open is a different thing from a laptop with one child on it.
 
-**Fair use.** The model endpoints are open to whoever finds them, and one script can
-spend a day's quota in a minute. There is a per-IP and a global budget (`RATE_PER_IP`,
-`RATE_GLOBAL`), and going over does not error — it takes the exact path the app takes
-when no key is set. A child who trips the limit gets a slightly more generic Pip; the
-person hammering it gets the rule engine. Nothing to see, nothing to spend.
+**Fair use.** The model endpoints are open to whoever finds them, and one script can spend
+a day's quota in a minute. There is a per-IP and a global budget (`RATE_PER_IP`,
+`RATE_GLOBAL`), and going over does not error — it takes the exact path the app takes when
+no key is set. A child who trips the limit gets a slightly more generic Pip; the person
+hammering it gets the rule engine. Nothing to see, nothing to spend.
 
-**The free tier and other people's children.** On Google's free tier, prompts and
-responses may be used to improve their products and may be seen by human reviewers.
-The app sends only the problem text, the tapped word and the equation built — no
-names, no account details — but if strangers' children are typing questions into it,
-that is a decision to make on purpose rather than by default. The paid tier does not
-use prompts for product improvement.
+**Whose children are typing into it.** On Gemini's free tier, prompts and responses may be
+used to improve Google's products and may be seen by human reviewers. The app sends only
+the problem text, the tapped word and the equation built — no names, nothing from a
+profile — but once strangers' children are using it, that is a decision to make on purpose.
+The paid tier does not use prompts for product improvement.
 
-**There is exactly one sign-in surface.** There were briefly two — a form inside the
-"who is playing" panel and the grown-ups page — and they drifted: the password form
-was added to one, and the one people actually found still offered only the emailed
-link. The panel now carries a status line and a button through to the single page
-that owns everything to do with accounts.
-
-**Email and password is the front door**, because it can send NO email at all —
-provided "Confirm email" is off in Supabase. That matters more than it sounds:
-Supabase's built-in sender allows two messages an hour, so an emailed link is fine
-for one parent testing and useless for a room of them. The link still exists as a
-secondary option, and Google sign-in is there when `AUTH_GOOGLE=1`.
-
-Passwords are hashed and checked by Supabase. This server forwards the credentials
-over HTTPS and keeps nothing: the failure paths report Supabase's status code and a
-mapped message, never the body of a request that carried a password.
-
-**Two ways in for a parent.** A magic link by email, and — when `AUTH_GOOGLE=1` —
-Google sign-in. The second is not a convenience: Supabase's built-in email sender
-allows two messages an hour, which is fine for one parent testing and useless for a
-room of them. OAuth sends no email at all, so it is the door that still opens when
-the other is rate-limited. It is behind a flag because it needs configuring in both
-Google Cloud and Supabase, and a button that leads to an error page is worse than no
-button.
-
-**`/api/selftest` answers only to localhost**, since it names the provider, shows a
-masked key and makes a real model call on every hit.
+**`/api/selftest` refuses anything that arrived through a proxy.** It names the provider,
+shows a masked key and makes a real model call on every hit. Checking the socket address
+alone was not enough: behind a load balancer that address *is* loopback, so the endpoint
+was wide open on the first deploy. A forwarded header now means "from outside", whatever
+the socket says.
 
 ## Where the model is allowed to be in the loop
 
@@ -335,7 +381,24 @@ start one child fresh. Everything is local; no account is needed for any of it.
 holding weeks of progress under the old single key has it migrated into the first
 profile, **and the old key is left exactly where it was**, so nothing is unrecoverable.
 
-Accounts sit ON TOP of that, never underneath, and are optional:
+### Signing in
+
+**Email and password is the front door**, and it can send NO email at all provided
+"Confirm email" is off in Supabase. That matters more than it sounds: the built-in sender
+allows two messages an hour — fine for one parent testing, useless for a room of them. An
+emailed magic link is still offered as a secondary option, and Google sign-in appears when
+`AUTH_GOOGLE=1`.
+
+Passwords are hashed and checked by Supabase. This server forwards the credentials over
+HTTPS and keeps nothing: the failure paths report Supabase's status code and a mapped
+message, never the body of a request that carried a password.
+
+**There is exactly one sign-in surface.** There were briefly two — a form inside the "who
+is playing" panel and one on the grown-ups page — and they drifted: the password form went
+into one, and the one people actually found still offered only the emailed link. The panel
+now carries a status line and a button through to the single page that owns accounts.
+
+Accounts sit ON TOP of local players, never underneath, and are optional:
 
 - **The account belongs to the parent**, not the child. A child is a profile with a
   first name under a parent's email. This is the COPPA-shaped answer — collecting
@@ -397,15 +460,15 @@ playtest to survive and cannot regress the children's app, so it can move until 
 Sept**. That distinction is what sets the order below: child-facing work goes early,
 grown-up-facing work goes late.
 
-| date | what |
-|---|---|
-| **Sat 5 Sept** | Levels and stars made legible + the branching map. Surface the reasoning trace — Pip says what he noticed about *how* they worked, which is the one thing rules cannot do. |
-| **Sun 6 Sept** | Finish deploy. **Public git repo, LICENSE, and the submission assets**: a live URL, the written entry, and `/api/selftest` plus all four test suites shown in the README. |
-| **Mon 7 Sept** (holiday) | **Decide the safety policy on child-authored problems.** This is one decision, not a build task — see the rule below. Then playtest prep. |
-| **Tue-Fri 8-11 Sept** | **Make and share problems.** Child-facing, so it has to clear the 11 Sept freeze or it cannot be playtested at all. Test the whole app end to end with the household tester. Write the video script. |
-| **Sat-Sun 12-13 Sept** | Playtest with his friends. **Film it** (with their parents' permission). Come back with the four numbers below. |
-| **Mon-Wed 14-16 Sept** | Bug fixes and at most two feedback features. **Parent mode** — grown-up-facing, no child can reach it, so this is the right place for it. Cut and finish the video. |
-| **Thu 17 Sept** | Submit. |
+| date | what | status |
+|---|---|---|
+| **Sat 5 Sept** | Levels and stars made legible + the branching map. Surface the reasoning trace — Pip says what he noticed about *how* they worked, which is the one thing rules cannot do. | ✅
+| **Sun 6 Sept** | Finish deploy. **Public git repo, LICENSE, and the submission assets**: a live URL, the written entry, and `/api/selftest` plus all four test suites shown in the README. | ✅
+| **Mon 7 Sept** (holiday) | **Decide the safety policy on child-authored problems.** This is one decision, not a build task — see the rule below. Then playtest prep. | 🔄
+| **Tue-Fri 8-11 Sept** | **Make and share problems.** Child-facing, so it has to clear the 11 Sept freeze or it cannot be playtested at all. Test the whole app end to end with the household tester. Write the video script. | ⏳
+| **Sat-Sun 12-13 Sept** | Playtest with his friends. **Film it** (with their parents' permission). Come back with the four numbers below. | ⏳
+| **Mon-Wed 14-16 Sept** | Bug fixes and at most two feedback features. **Parent mode** — grown-up-facing, no child can reach it, so this is the right place for it. Cut and finish the video. | ⏳
+| **Thu 17 Sept** | Submit. | ⏳
 
 Rules that keep this from slipping:
 
@@ -447,6 +510,26 @@ measurement plan. Four numbers, every one of them already instrumented:
 4. **How often was word help used, and on which words?** The evidence for *reading is not
    maths*: if the lookups cluster on the maths words rather than the objects, the argument
    is made for us.
+
+## Shipped on 7 Sept
+
+- **Live at a public URL**, deployed from this repo. Node process, no build, health check
+  on `/api/status`.
+- **Players.** A shared laptop is the normal case: one child hands it to the next. Each has
+  their own road, their own stars, and a picker in the header. Progress from before players
+  existed is migrated into the first one.
+- **Parent accounts**, optional and never in the way — the app opens on the star map and no
+  child is asked to sign in to anything. Email and password, a magic link, or Google.
+- **A grown-ups page** that owns everything to do with accounts: sign in, add a player, set
+  a school year, remove one. Reachable in one tap from the map.
+- **Fair-use budgets** on the model endpoints that degrade to the offline engines.
+
+Four bugs found by testing rather than by clicking, each of which would have looked fine:
+the server **crashed at boot** when a Gemini key was set without a model pinned (a `.env`
+with both never showed it); `/api/selftest` was **wide open behind the proxy** because the
+socket address is loopback there; the magic link **landed on the star map** because signing
+in triggers a reload that threw away why you were there; and signing in on a device that
+already had "Ava" **created a second Ava**.
 
 ## To do
 

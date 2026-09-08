@@ -133,8 +133,9 @@ export async function addChild(name, progress) {
   return r.ok && r.json ? r.json.child : null;
 }
 
-export async function saveChild(id, { name, progress } = {}) {
-  const r = await call(`/api/account/children/${id}`, { method: 'PUT', body: JSON.stringify({ name, progress }) });
+export async function saveChild(id, { name, progress } = {}, opts = {}) {
+  const r = await call(`/api/account/children/${id}`,
+    { method: 'PUT', body: JSON.stringify({ name, progress }), ...opts });
   return r.ok;   // false is a real failure, and the caller must show it
 }
 

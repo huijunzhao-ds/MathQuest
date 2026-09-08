@@ -867,3 +867,84 @@ button.tool.mic.listening { background: rgba(252,165,165,.18); border-color: rgb
   background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
 }
 .linkish:hover { color: var(--sky); }
+
+/* ---- Sharing a puzzle ------------------------------------------------------ */
+#shareLink {
+  width: 100%; margin-top: 16px; padding: 12px 14px; border-radius: 12px;
+  font: inherit; font-size: 13px; color: var(--ink-soft); text-align: center;
+  background: rgba(255,255,255,.06); border: 1.5px solid rgba(255,255,255,.12);
+}
+#shareLink:focus { outline: none; border-color: var(--sky); }
+
+.fromfriend {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 12px; padding: 12px 16px; border-radius: 16px;
+  background: rgba(196,181,253,.12); border: 1.5px solid rgba(196,181,253,.3);
+  font-size: 14.5px; font-weight: 700; color: var(--ink);
+}
+.fromfriend b { color: var(--violet); }
+
+/* The heart. Small, next to the stars — liking a puzzle is a nudge, not a score. */
+.likebtn {
+  border: 0; background: none; cursor: pointer; padding: 4px 6px; line-height: 1;
+  font-size: 19px; filter: grayscale(1) opacity(.5); transition: filter .18s ease, transform .18s ease;
+}
+.likebtn:hover { transform: scale(1.15); }
+.likebtn.on { filter: none; }
+
+/* ---------------------------- maker & friends ------------------------------- */
+#makeText {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 96px;
+  font: 600 17px/1.55 var(--font-body); color: var(--ink);
+  background: rgba(255,255,255,.05); border: 2px solid rgba(255,255,255,.14);
+  border-radius: 16px; padding: 14px 16px;
+}
+#makeText:focus { outline: none; border-color: var(--sky); }
+#makeText::placeholder { color: var(--ink-dim); font-weight: 600; }
+.makecount { font-size: 12.5px; font-weight: 700; color: var(--ink-dim); margin-top: 8px; text-align: right; }
+.makeanswer { margin-top: 16px; font-size: 15.5px; font-weight: 700; color: var(--ink-dim); min-height: 22px; }
+.makeanswer b { color: var(--ink); font-size: 19px; }
+.makewhy {
+  font-size: 15px; font-weight: 700; color: var(--amber, #f0b429); line-height: 1.5;
+  text-align: center; min-height: 22px;
+}
+.makewhy.good { color: var(--mint, #4ade80); }
+#makeSend[disabled], #makeTry[disabled] { opacity: .4; pointer-events: none; }
+
+.mkpad { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; align-items: flex-end; }
+.mknum {
+  display: inline-flex; align-items: baseline; gap: 7px;
+  font-family: var(--font); font-size: 25px; font-weight: 600;
+  color: var(--on-sky); background: linear-gradient(160deg, var(--gold-2), var(--gold));
+  border: none; border-radius: 14px; padding: 6px 16px; cursor: pointer;
+  box-shadow: 0 0 22px rgba(255,201,74,.5);
+  transition: transform .12s, box-shadow .18s;
+}
+.mknum small { font-family: var(--font-body); font-size: 13px; font-weight: 800; opacity: .72; }
+.mknum:hover  { transform: translateY(-3px); box-shadow: 0 0 30px rgba(255,201,74,.85); }
+.mknum:active { transform: translateY(1px); }
+
+.subhead { font-family: var(--font); font-size: 15px; font-weight: 600; color: var(--ink-dim); margin: 22px 0 10px; }
+.likedlist { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.likedchip {
+  all: unset; cursor: pointer; display: flex; align-items: center; gap: 14px;
+  justify-content: space-between; padding: 11px 15px; border-radius: 14px;
+  background: rgba(255,255,255,.05); border: 2px solid rgba(255,255,255,.11);
+  font-size: 14.5px; font-weight: 700; color: var(--ink-dim); line-height: 1.4;
+}
+.likedchip:hover { background: rgba(255,255,255,.10); color: var(--ink); }
+.likedchip b { color: var(--sky); white-space: nowrap; font-size: 14px; }
+
+.friendlist { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.friend {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,.07); border: 2px solid rgba(255,255,255,.12);
+  border-radius: 999px; padding: 7px 8px 7px 15px; font-size: 14.5px; font-weight: 700;
+}
+.friend button {
+  all: unset; cursor: pointer; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--ink-dim);
+  background: rgba(255,255,255,.08); font-size: 15px; line-height: 1;
+}
+.friend button:hover { color: var(--ink); background: rgba(255,255,255,.18); }
+#socialCard .cardhead { align-items: center; }
