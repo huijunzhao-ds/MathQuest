@@ -5,10 +5,11 @@ import { lookupWord, START_LADDER } from '/shared/dictionary.js';
 import * as Profiles from '/shared/profiles.js';
 import * as Cloud from '/cloud.js';
 import * as Share from '/shared/share.js';
+import * as Insight from '/shared/insight.js';
 import { canExplain, mountExplainer, canShowSituation, mountSituation } from '/mathviz.js';
 import {
   MAP_POS, MAP_ROWS, PREREQS, bandKey, bandStat, bandStars, nextStar,
-  worldStars, worldMaxStars, worldUnlocked, bandUnlocked, lockReason,
+  worldStars, worldMaxStars, worldSolved, worldUnlocked, bandUnlocked, lockReason,
   openBands, recommendedBand, recommendedWorld, totalStars, maxStars, migrate,
   testedOut, markTestedOut, easierBand, TEST_OUT_REQUIRED
 } from '/shared/progress.js';
@@ -59,6 +60,7 @@ function save() {
 const blankProgress = () => ({
   xp: 0, streakDays: 0, bestStreak: 0, lastPlayed: null,
   concepts: {}, bands: null, testedOut: {}, solvedIds: [], misconceptions: {},
+  history: [],    // one summarised record per problem — how they worked, never what they wrote
   liked: [],      // puzzle ids this child gave a heart to
   friends: []     // names of people whose puzzles they have opened: [{name, seen}]
 });
@@ -73,7 +75,7 @@ const state = {
   attempts: 0, usedHelp: false, startStep: 0,
   lastDiag: null, lastMisconception: null,
   mode: 'main', practiceQueue: [], practiceTarget: null, solvedInRound: 0,
-  combo: 0, wordMode: false, listening: null,
+  combo: 0, wordMode: false, listening: null, recorded: false,
   band: null,           // the difficulty level currently being played
   challenge: null,      // { left, failed } while testing out of a locked level
   runWrong: 0, runSlips: 0   // how this visit to a level is going
@@ -179,7 +181,7 @@ async function boot() {
   }
   // They clicked a link in their email; show them the page that link was for,
   // even if a reload happened in between.
-  if (wantedParents()) showParents();
+  if (wantedParents()) { openGate(); showParents(); }
 }
 
 function renderHeader() {
@@ -615,6 +617,32 @@ const gradeOptions = (sel = '') =>
   `<option value="">School year…</option>` +
   Profiles.GRADES.map(g => `<option value="${g.n}" ${String(sel) === String(g.n) ? 'selected' : ''}>${g.label}</option>`).join('');
 
+/* ============================== GROWN-UPS VIEW =============================== */
+// Gated, because a star map with a "For grown-ups" button on it is one tap from a
+// seven-year-old reading a paragraph about their own misconceptions. The gate is a
+// speed bump and the screen says so: a child who wants past this can get past it,
+// and the honest thing is to admit that rather than imply a lock.
+
+let gateAnswer = null;
+const gateOpen = () => { try { return sessionStorage.getItem('mq.grown') === '1'; } catch { return false; } };
+const openGate = () => { try { sessionStorage.setItem('mq.grown', '1'); } catch {} };
+
+function renderGate() {
+  const a = 11 + Math.floor(Math.random() * 78), b = 3 + Math.floor(Math.random() * 6);
+  gateAnswer = a * b;
+  $('gateQ').textContent = `What is ${a} × ${b}?`;
+  $('gateA').value = '';
+  $('gateMsg').textContent = '';
+}
+
+$('gateGo').onclick = () => {
+  if (Number($('gateA').value) === gateAnswer) { openGate(); showParents(); return; }
+  renderGate();                                  // a new sum, THEN the message
+  $('gateMsg').textContent = 'Not quite — here is another one.';
+  $('gateA').focus();
+};
+$('gateA').addEventListener('keydown', e => { if (e.key === 'Enter') $('gateGo').click(); });
+
 function showParents() {
   Speech.stop();
   $('makeScreen') && $('makeScreen').classList.add('hidden');
@@ -625,8 +653,103 @@ function showParents() {
   $('whoModal').classList.add('hidden');
   $('parentScreen').classList.remove('hidden');
   $('homeBtn').classList.remove('hidden');
+
+  const open = gateOpen();
+  $('pGateCard').classList.toggle('hidden', open);
+  $('pBody').classList.toggle('hidden', !open);
+  $('pReport').classList.toggle('hidden', !open);
+  if (!open) { renderGate(); setTimeout(() => $('gateA').focus(), 50); return; }
   renderParents();
+  renderReport();
 }
+
+/* ------------------------------- the report --------------------------------- */
+// Deliberately not a dashboard. A parent has two minutes and one question: is this
+// working, and what should I say to my child. So it is prose with numbers in it,
+// it leads with the misconceptions (where the "why" text is already written for a
+// grown-up), and it ends with what it cannot see.
+
+let reportFor = null;
+
+function renderReport() {
+  const list = Profiles.listProfiles();
+  const id = reportFor && list.some(p => p.id === reportFor) ? reportFor : ME.id;
+  reportFor = id;
+  const who = list.find(p => p.id === id) || { name: ME.name };
+  const prog = id === ME.id ? P : Object.assign(blankProgress(), Profiles.loadProgress(id) || {});
+
+  $('rName').textContent = who.name;
+  $('rPick').innerHTML = list.map(p =>
+    `<option value="${esc(p.id)}"${p.id === id ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+  $('rPick').classList.toggle('hidden', list.length < 2);
+
+  const hist = prog.history || [];
+  const conf = Insight.confidence(hist);
+  $('rConf').textContent = conf.why;
+
+  /* --- the four numbers, and what each one means --- */
+  const solved = Object.values(prog.bands || {}).reduce((n, b) => n + (b.solved || 0), 0);
+  const firstTry = Object.values(prog.bands || {}).reduce((n, b) => n + (b.firstTry || 0), 0);
+  const asked = hist.filter(r => r.q !== 'none');
+  const answered = asked.filter(r => r.q === 'answered').length;
+  const tile = (big, label, note) =>
+    `<div class="rtile"><b>${big}</b><span>${esc(label)}</span><small>${esc(note)}</small></div>`;
+  $('rTotals').innerHTML =
+    tile(solved, 'problems solved', 'across every level')
+  + tile(`${totalStars(prog, ORDER)}`, 'stars', `of ${maxStars(ORDER)} — first try, no help`)
+  + tile(solved ? `${Math.round(firstTry / solved * 100)}%` : '—', 'solved first try',
+         'the honest measure of "knows it"')
+  + tile(asked.length ? `${answered}/${asked.length}` : '—', 'answered Pip',
+         'rather than opening the hint');
+
+  /* --- what they can do --- */
+  $('rWorlds').innerHTML = ORDER.map(k => {
+    const c = CONCEPTS[k];
+    const st = worldStars(prog, k), mx = worldMaxStars(k);
+    const done = worldSolved(prog, k);
+    const open = worldUnlocked(prog, k);
+    return `<div class="rworld ${open ? '' : 'shut'}">
+      <span class="rwname">${c.icon}<b>${esc(c.label)}</b><i>${esc(c.short)}</i></span>
+      <span class="rwbar"><span style="width:${mx ? Math.round(st / mx * 100) : 0}%;background:${c.color}"></span></span>
+      <span class="rwnum">${open ? `${st}/${mx} ★ · ${done} solved` : 'not open yet'}</span>
+    </div>`;
+  }).join('');
+
+  /* --- what is still tricky --- */
+  const miss = Object.entries(prog.misconceptions || {}).filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const seen = {};
+  for (const r of hist) for (const m of r.m || []) seen[m] = (seen[m] || 0) + 1;
+  $('rMiss').innerHTML = miss.length
+    ? miss.map(([k, v]) => {
+        const M = MISCONCEPTIONS[k];
+        if (!M) return '';
+        return `<div class="rmiss">
+          <b>${esc(M.label)}</b>${v > 1 ? `<span class="rcount">seen ${v}×</span>` : ''}
+          <p>${esc(M.why)}</p>
+          <p class="rsay"><b>Worth asking:</b> ${esc(M.ask)}</p>
+        </div>`;
+      }).join('')
+    : `<p class="pnote">${solved
+        ? 'Nothing open right now — the equations have been matching the stories.'
+        : 'Nothing yet, because nothing has been solved yet.'}</p>`;
+
+  /* --- how they work --- */
+  const obs = Insight.observe(hist);
+  $('rStyle').innerHTML = obs.length
+    ? obs.map(o => `<div class="robs"><b>${esc(o.title)}</b>
+        <span class="rcount">${o.n} problem${o.n === 1 ? '' : 's'}</span>
+        <p>${esc(o.detail)}</p></div>`).join('')
+    : `<p class="pnote">Not enough to say anything worth reading yet. ${esc(conf.why)}
+       This section stays empty rather than guessing.</p>`;
+
+  $('rDevice').textContent = who.remote
+    ? 'Anything played signed out, or on a device before you signed in there, is not counted here.'
+    : 'This player is only on this device, so anything played elsewhere is not counted here. '
+      + 'Signing in keeps one record across devices.';
+}
+
+$('rPick').addEventListener('change', e => { reportFor = e.target.value; renderReport(); });
 
 async function renderParents() {
   const cfg = await Cloud.config();
@@ -1115,7 +1238,12 @@ function nextProblem() {
 }
 
 function loadProblem(p) {
+  // The problem being left has to be recorded BEFORE `state.current` moves on, or
+  // the record is filed against the problem the child is about to see instead of
+  // the one they just walked away from.
+  if (state.current && !state.recorded) recordProblem(false);
   state.current = p;
+  state.recorded = false;
   state.eq = []; state.trace = [];
   state.attempts = 0; state.usedHelp = false; state.startStep = 0; state.slips = 0;
   state.lastDiag = null;
@@ -1515,8 +1643,22 @@ const RECOVERED_PRAISE = [
 ];
 const pick = a => a[Math.floor(Math.random() * a.length)];
 
+/** A problem is over. Keep a dozen numbers about HOW it went, and nothing they typed. */
+function recordProblem(solved) {
+  const p = state.current;
+  if (!p || state.recorded) return;
+  state.recorded = true;
+  P.history = Insight.remember(P.history, Insight.summarise(state.trace, {
+    concept: p.concept, band: state.band ? state.band.id : null,
+    solved, attempts: state.attempts,
+    misconceptions: [state.lastMisconception].filter(k => k && k !== 'incomplete')
+  }));
+  save();
+}
+
 function onCorrect(diag) {
   touchStreak();
+  recordProblem(true);
   const c = state.current.concept;
   const clean = state.attempts === 1 && !state.usedHelp;
   // A friend's puzzle, or one the child wrote, is not part of any level: it is

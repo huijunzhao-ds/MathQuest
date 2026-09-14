@@ -10,13 +10,14 @@ Twin Moons, Comet Trail, Star Cluster, Ring Belt, Nebula Gate. Every icon is dra
 as SVG, so nothing depends on emoji fonts.
 
 **Play it:** <https://mathquest-czoy.onrender.com>
+**Source:** <https://github.com/huijunzhao-ds/MathQuest>
 
 Built for the Nerdy AI hackathon, K–5 Math Game prompt.
 
 ## Run it
 
 ```bash
-git clone https://github.com/huijunzhao-ds/mathquest.git
+git clone https://github.com/huijunzhao-ds/MathQuest.git
 cd mathquest
 npm start                 # → http://localhost:5173
 ```
@@ -465,10 +466,18 @@ grown-up-facing work goes late.
 | **Sat 5 Sept** | Levels and stars made legible + the branching map. Surface the reasoning trace — Pip says what he noticed about *how* they worked, which is the one thing rules cannot do. | ✅
 | **Sun 6 Sept** | Finish deploy. **Public git repo, LICENSE, and the submission assets**: a live URL, the written entry, and `/api/selftest` plus all four test suites shown in the README. | ✅
 | **Mon 7 Sept** (holiday) | **Decide the safety policy on child-authored problems.** Decided: **fill-in-the-blanks only, no free prose.** Built on the 8th — see below. | ✅
-| **Tue-Fri 8-11 Sept** | **Make and share problems and Parent mode** — built. Remaining: end-to-end test with the household tester, and the video script. | 🔄
+| **Tue-Wed 8-9 Sept** | **Make and share problems** — built. Remaining: end-to-end test with the household tester, and the video script. | 🔄
+| **Thu-Fri 10-11 Sept** | **Parent mode** — grown-up-facing, no child can reach it, so this is the right place for it. | 🔄
 | **Sat-Sun 12-13 Sept** | Playtest with his friends. **Film it** (with their parents' permission). Come back with the four numbers below. | ⏳
-| **Mon-Wed 14-16 Sept** | Bug fixes and at most two feedback features. **Parent mode** — grown-up-facing, no child can reach it, so this is the right place for it. Cut and finish the video. | ⏳
+| **Mon-Wed 14-16 Sept** | Bug fixes and at most two feedback features. Cut and finish the video. | ⏳
 | **Thu 17 Sept** | Submit. | ⏳
+
+**Parent mode moved earlier, on purpose.** It was parked in the 14-16 Sept block on the
+argument that no child can reach it, so it cannot regress the children's app. That argument
+still holds, but it cut the wrong way: the same property makes it the one item that does not
+need the playtest, and leaving it until the final week meant the demo's second-strongest
+story — *here is what the app noticed about how your child thinks* — would be built in the
+same three days as the video edit. It moves to 9-11 Sept, alongside the rest of make-and-share.
 
 Rules that keep this from slipping:
 
@@ -587,6 +596,57 @@ What else shipped:
   parent is signed in; it now also flushes when the tab goes away (`keepalive`, so the last
   few answers are not killed mid-flight) and pulls when it comes back.
 
+## Shipped on 14 Sept — the grown-ups view
+
+Three things had to be true before this was worth building, and they shaped all of it.
+
+**1. The interesting half did not exist yet.** Stars, solved counts, first-try rates and open
+misconceptions were already collected, so "what they can do" was surfacing work. But the
+reasoning trace — every tap, pause and revision — was thrown away at the end of each problem,
+which meant *how* a child works could not be described at all. `public/shared/insight.js` is
+the new part: each finished problem now leaves behind about a dozen numbers.
+
+**2. A child's words must not end up on a parent's screen.** The trace holds everything a
+child typed at Pip. None of it is kept. What survives one problem is timings, counts of taps
+and undos, which helps were opened, whether Pip's question got an answer — and the *words*
+they asked the meaning of, never the sentences they wrote about them. `test/insight.mjs`
+plants a sentence a child would not want repeated into a trace and asserts it appears nowhere
+in what gets stored.
+
+**3. An observation has to carry its evidence, or not be made.** "Rushes and then corrects"
+resting on three problems is worse than silence. Nothing is claimed below six problems, every
+observation shows the count it rests on, and the section says so rather than quietly thinning
+out. The tests assert the count is real and that no observation says *always*, *never* or
+*clearly*.
+
+What a parent actually sees, in this order, because they have two minutes and one question —
+*is this working, and what do I say to my child*:
+
+- **Four numbers.** Solved, stars, first-try rate, and *answered Pip / times Pip asked*. That
+  last one is the number this whole app rests on: a child willing to be asked something rather
+  than told it. It was already in the playtest plan as the thing to watch; now it is on screen.
+- **What they can do** — the five worlds, stars out of maximum, what is not open yet.
+- **Ideas that are still tricky** — each misconception with the `why` prose that was already
+  written for a grown-up, plus the question worth asking at the kitchen table. This is the part
+  a parent can act on tonight.
+- **How they work** — pattern observations across problems: whether they read before touching
+  anything, rebuild the equation before committing, answer Pip or reach past him, and which
+  words they look up (if those are the objects rather than the maths words, the barrier was
+  reading and the maths may be further along than the score says).
+- **What this does not tell you** — that someone may have been sitting next to them, that a
+  right answer may have been a lucky guess in a small space, that nothing done on paper or in
+  their head is visible, and that a word lookup may be curiosity rather than being stuck.
+
+**The gate is a speed bump and says so.** A multiplication a seven-year-old will not bother
+with, remembered for the browser session. A child who wants past it can get past it; claiming
+otherwise on screen would be the dishonest part, so the screen says it in the first sentence.
+A parent arriving from their own sign-in email skips it — they have proved more than the sum
+would.
+
+**Storage.** The last 80 problems, bounded so it stays small enough to sync with everything
+else. It rides along in the existing progress record, so it follows a signed-in child between
+devices with no new table and no new endpoint.
+
 ## To do
 
 - [x] ~~**Switch the AI layer on**~~ — live on Gemini. Word help and the starting nudges are
@@ -659,18 +719,11 @@ What else shipped:
       anything identifying beyond a name they choose. Say plainly in the parent view what is
       kept. A tutoring company's engineers will look for exactly this.
 
-- [ ] **Parent mode — what the child has learnt, and how they think.** Review progression,
-      summarise what has been mastered, and surface the thinking styles observed. Notes:
-      - Most of the raw material ALREADY EXISTS: misconception counts, first-try rates and
-        per-concept stats are all being collected. This is largely surfacing what is known,
-        not new instrumentation.
-      - What is NOT kept is the reasoning trace itself — every tap, hesitation and revision is
-        thrown away at the end of a problem. Style observations ("guesses fast then corrects",
-        "always re-reads the last sentence") need those traces summarised and persisted.
-      - It can ship BEFORE accounts: a single-device parent view can read what is in
-        `localStorage` today and needs no backend at all.
-      - Gate it behind something a 7-year-old will not bother with, and keep it honest — it
-        should say what the app does NOT know as well as what it does.
+- [x] ~~**Parent mode — what the child has learnt, and how they think.**~~ Built. The half
+      that already existed — stars, solved counts, first-try rates, open misconceptions — was
+      surfacing work. The half that did not is `public/shared/insight.js`: the reasoning trace
+      used to be thrown away at the end of every problem, so style could not be described at
+      all. Each finished problem now leaves a dozen numbers behind. See *Shipped on 14 Sept*.
 
 - [ ] **Memory and personalisation on the child's progression and style.** Adapt what is served
       and how Pip talks based on the profile above — which misconceptions recur, whether they

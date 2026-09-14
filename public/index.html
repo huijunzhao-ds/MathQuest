@@ -109,10 +109,71 @@
 
   <!-- ============================== GROWN-UPS =============================== -->
   <section id="parentScreen" class="hidden">
-    <div class="card">
+    <div class="grownhead">
       <button class="backbtn" id="parentBack">&larr; Back to the game</button>
-      <h2 class="ph1">For grown-ups</h2>
+    </div>
 
+    <div class="card" id="pGateCard">
+      <h2 class="ph1">For grown-ups</h2>
+      <div id="pGate">
+        <p class="pnote">This part is for a grown-up. It is a speed bump, not a lock &mdash;
+          it is here so a child does not wander in, not to keep a determined one out.</p>
+        <div class="gaterow">
+          <label id="gateQ" for="gateA"></label>
+          <input id="gateA" type="number" inputmode="numeric" autocomplete="off">
+          <button class="primary" id="gateGo">Enter</button>
+        </div>
+        <p class="pnote" id="gateMsg"></p>
+      </div>
+    </div>
+
+    <div id="pReport" class="hidden">
+      <div class="card">
+        <div class="cardhead">
+          <h2>What <span id="rName">your child</span> has been doing</h2>
+          <select id="rPick" class="gradesel" aria-label="Which child"></select>
+        </div>
+        <p class="pnote" id="rConf"></p>
+        <div class="rgrid" id="rTotals"></div>
+      </div>
+
+      <div class="card">
+        <h2>What they can do</h2>
+        <p class="pnote">A star is earned by solving on the first try with no help, so stars
+          measure something narrower and harder than &ldquo;got it right&rdquo;.</p>
+        <div id="rWorlds"></div>
+      </div>
+
+      <div class="card">
+        <h2>Ideas that are still tricky</h2>
+        <p class="pnote">These are about how the story was read, not about arithmetic. Each one
+          says what the child is doing and why it makes sense to them &mdash; that second part is
+          usually the useful bit at the kitchen table.</p>
+        <div id="rMiss"></div>
+      </div>
+
+      <div class="card">
+        <h2>How they work</h2>
+        <p class="pnote">Patterns across problems rather than any single one. Each says how many
+          problems it rests on; anything thinner than that is not shown at all.</p>
+        <div id="rStyle"></div>
+      </div>
+
+      <div class="card">
+        <h2>What this does not tell you</h2>
+        <ul class="rhonest">
+          <li>Whether anyone was sitting next to them. A parent reading the story aloud looks
+            exactly like a fast, confident solve.</li>
+          <li>Whether a right answer was reasoned or guessed. Two numbers and one operator is a
+            small space to guess in, especially on the easier levels.</li>
+          <li>Anything they did on paper, out loud, or in their head. Only taps are visible here.</li>
+          <li>Whether a word lookup meant they were stuck, or just curious.</li>
+          <li id="rDevice"></li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="pBody" class="hidden"><div class="card">
       <div id="pOut">
         <p class="pnote">Sign in to set up a player for each child, and to keep their progress
           on every device you use.</p>
@@ -153,11 +214,12 @@
         </div>
       </div>
 
-      <p class="pnote pfine">What is stored: the first name you type, a school year, and what
-        the child has solved. No birthdate, no address, nothing about the school. The school
-        year is stamped once and moves up on its own each August, so there is nothing to keep
-        editing.</p>
-    </div>
+      <p class="pnote pfine">What is stored: the first name you type, a school year, what the
+        child has solved, and a summary of how they worked &mdash; timings, taps, and the words
+        they asked the meaning of. <b>Nothing a child typed or said is kept.</b> No birthdate, no
+        address, nothing about the school. The school year is stamped once and moves up on its own
+        each August, so there is nothing to keep editing.</p>
+    </div></div>
   </section>
 
   <!-- ============================== SHARE ================================== -->

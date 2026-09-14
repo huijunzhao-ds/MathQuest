@@ -989,3 +989,51 @@ button.tool.mic.listening { background: rgba(252,165,165,.18); border-color: rgb
 }
 .friend button:hover { color: var(--ink); background: rgba(255,255,255,.18); }
 #socialCard .cardhead { align-items: center; }
+
+/* ------------------------------- grown-ups view ----------------------------- */
+.gaterow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 16px 0 4px; }
+.gaterow label { font-family: var(--font); font-size: 19px; font-weight: 600; color: var(--ink); }
+.gaterow input {
+  width: 110px; text-align: center; font-family: var(--font); font-size: 20px; font-weight: 600;
+  color: var(--ink); background: rgba(255,255,255,.06);
+  border: 2px solid rgba(255,255,255,.14); border-radius: 12px; padding: 8px 6px;
+  -moz-appearance: textfield;
+}
+.gaterow input::-webkit-outer-spin-button, .gaterow input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.gaterow input:focus { outline: none; border-color: var(--sky); }
+
+.rgrid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); margin-top: 14px; }
+.rtile {
+  background: rgba(255,255,255,.05); border: 2px solid rgba(255,255,255,.1);
+  border-radius: 16px; padding: 14px 16px;
+}
+.rtile b { display: block; font-family: var(--font); font-size: 30px; font-weight: 600; color: var(--ink); line-height: 1.1; }
+.rtile span { display: block; margin-top: 4px; font-size: 14px; font-weight: 800; color: var(--ink); }
+.rtile small { display: block; margin-top: 3px; font-size: 12px; font-weight: 700; color: var(--ink-dim); line-height: 1.4; }
+
+.rworld { display: flex; align-items: center; gap: 14px; padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.07); flex-wrap: wrap; }
+.rworld:last-child { border-bottom: none; }
+.rworld.shut { opacity: .5; }
+.rwname { display: flex; align-items: center; gap: 9px; flex: 1 1 200px; font-size: 14px; }
+.rwname svg { width: 21px; height: 21px; flex: none; }
+.rwname b { font-family: var(--font); font-size: 16px; font-weight: 600; color: var(--ink); }
+.rwname i { font-style: normal; color: var(--ink-dim); font-weight: 700; font-size: 13px; }
+.rwbar { flex: 1 1 110px; height: 9px; border-radius: 999px; background: rgba(255,255,255,.09); overflow: hidden; }
+.rwbar span { display: block; height: 100%; border-radius: 999px; }
+.rwnum { flex: 0 0 auto; font-size: 13px; font-weight: 800; color: var(--ink-dim); }
+
+.rmiss, .robs { padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+.rmiss:last-child, .robs:last-child { border-bottom: none; }
+.rmiss > b, .robs > b { font-family: var(--font); font-size: 17px; font-weight: 600; color: var(--ink); }
+.rmiss p, .robs p { margin: 7px 0 0; font-size: 14.5px; font-weight: 600; color: var(--ink-dim); line-height: 1.6; }
+.rsay { color: var(--ink) !important; }
+.rsay b { color: var(--sky); }
+.rcount {
+  margin-left: 9px; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
+  color: var(--ink-dim); background: rgba(255,255,255,.08); white-space: nowrap;
+}
+.rhonest { margin: 12px 0 0; padding-left: 20px; }
+.rhonest li { font-size: 14.5px; font-weight: 600; color: var(--ink-dim); line-height: 1.65; margin-bottom: 8px; }
+#rPick { max-width: 170px; }
+
+.grownhead { margin-bottom: 14px; }
