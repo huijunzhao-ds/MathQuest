@@ -6,6 +6,7 @@ import * as Profiles from '/shared/profiles.js';
 import * as Cloud from '/cloud.js';
 import * as Share from '/shared/share.js';
 import * as Insight from '/shared/insight.js';
+import * as Compose from '/shared/compose.js';
 import { canExplain, mountExplainer, canShowSituation, mountSituation } from '/mathviz.js';
 import {
   MAP_POS, MAP_ROWS, PREREQS, bandKey, bandStat, bandStars, nextStar,
@@ -145,7 +146,7 @@ async function boot() {
 
   // A puzzle sent by a friend jumps the queue: that link is the reason they
   // opened the app, so it should not land them on the map to go hunting.
-  const sent = puzzleFromLink();
+  const sent = puzzleFromLink() || await toldPuzzleFromLink();
   if (sent && sent.bad) {
     setTimeout(() => { $('heroMsg').textContent = sent.bad; }, 50);
   } else if (sent && sent.problem) {
@@ -176,7 +177,10 @@ async function boot() {
       // is nothing left to adopt or prune.
       if (pruned || touchedActive) { location.reload(); return; }
       await cloudPull();
-      if (added) renderRoad();
+      // Down first, then up: merging adopts a local child by name, so pushing
+      // first would create a second copy of a child the account already has.
+      const sent = await cloudPushUp();
+      if (added || sent) renderRoad();
     } catch { /* the game does not depend on this */ }
   }
   // They clicked a link in their email; show them the page that link was for,
@@ -227,6 +231,35 @@ $('shareCopy').onclick = async () => {
 $('shareDone').onclick = () => $('shareModal').classList.add('hidden');
 
 /** Someone sent a puzzle. Returns the problem to play, or null. */
+/**
+ * A `?q=` link carries a puzzle a child DICTATED, so it carries their own words —
+ * and a link carrying words is a link that can be edited by hand. The server signed
+ * it when it was made and is the only thing that can tell. So this one asks, rather
+ * than unpacking locally like `?p=` does.
+ */
+async function toldPuzzleFromLink() {
+  const code = new URLSearchParams(location.search).get('q');
+  if (!code) return null;
+  history.replaceState(null, '', location.pathname);
+  try {
+    const res = await fetch('/api/puzzle/open', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    const j = await res.json();
+    if (!res.ok || !j.text) return { bad: j.error || 'That link has been changed or is damaged.' };
+    if (j.from) rememberFriend(j.from);
+    return {
+      problem: hydrate({ id: 'told-' + Math.random().toString(36).slice(2, 8),
+                         concept: 'add-join', authored: true, from: j.from,
+                         text: j.text, correct: j.correct, accept: [], traps: {} }),
+      from: j.from
+    };
+  } catch {
+    return { bad: 'I could not open that link — are you online?' };
+  }
+}
+
 function puzzleFromLink() {
   const code = new URLSearchParams(location.search).get('p');
   if (!code) return null;
@@ -261,13 +294,35 @@ function rememberFriend(name) {
 // A heart is a nudge, not a score: it says "this one was good", which is what a
 // child actually wants to tell a friend, and it costs nothing to be wrong about.
 
-const isLiked = id => (P.liked || []).includes(id);
-function toggleLike(id) {
-  P.liked = P.liked || [];
-  const i = P.liked.indexOf(id);
-  if (i >= 0) P.liked.splice(i, 1); else { P.liked.push(id); Sound.star(); }
+// A liked puzzle has to be REBUILDABLE later, and a generated id is enough for
+// that while a friend's puzzle is not: "told-9f3a" means nothing tomorrow. So a
+// like stores whatever it takes to bring the puzzle back — an id for ours, the
+// story itself for one a person wrote. Older saves are a plain array of ids and
+// are read as such.
+const likedList = () => (P.liked || []).map(e => (typeof e === 'string' ? { id: e } : e)).filter(e => e && e.id);
+const isLiked = id => likedList().some(e => e.id === id);
+
+function toggleLike(p) {
+  const entry = typeof p === 'string' ? { id: p } : p;
+  P.liked = likedList();
+  const i = P.liked.findIndex(e => e.id === entry.id);
+  if (i >= 0) P.liked.splice(i, 1);
+  else {
+    P.liked.push(entry.authored
+      ? { id: entry.id, text: entry.text, correct: entry.correct, from: entry.from || '', authored: true }
+      : { id: entry.id });
+    Sound.star();
+  }
   save();
-  return isLiked(id);
+  return isLiked(entry.id);
+}
+
+/** Bring a liked puzzle back, whoever made it. */
+function likedProblem(e) {
+  if (e.authored && e.text && e.correct)
+    return hydrate({ id: e.id, authored: true, from: e.from || '', concept: 'add-join',
+                     text: e.text, correct: e.correct, accept: [], traps: {} });
+  return problemById(e.id);
 }
 
 /* ============================= PUZZLE MAKER =================================== */
@@ -277,6 +332,161 @@ function toggleLike(id) {
 // limitation. What is left for the child is the part that actually teaches:
 // deciding whether this is a grouping or a joining, and picking numbers that make
 // it worth solving.
+
+/* --------------------------- telling Pip the puzzle --------------------------- */
+// A seven-year-old does not hand you a finished word problem. He says "mum bought
+// two boxes of ice creams" and stops, and the puzzle arrives over four or five
+// turns of someone asking the next question. That conversation IS the thing worth
+// building: composing a word problem needs a deeper grasp of its structure than
+// solving one does, and it is the part he could not wait to send to his friends.
+//
+// The one rule underneath the whole flow is that Pip never supplies a number the
+// child did not say. A model asked to tidy up a half-told puzzle will happily
+// invent the missing six, and the child will send their friends a puzzle that is
+// not the one they made up.
+
+const tell = { turns: [], puzzle: null, busy: false, listening: null };
+
+function tellChat(who, text, { speak = true, cls = '' } = {}) {
+  const log = $('tellLog');
+  const el = document.createElement('div');
+  el.className = `msg m-${who} ${cls}`.trim();    // same shape as the play-screen chat
+  el.innerHTML = `<span class="b">${esc(text)}</span>`;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  if (!cls) tell.turns.push({ who, text });
+  if (who === 'pip' && speak && Sound.on) Speech.say(text);
+  return el;
+}
+
+function tellReset(greet = true) {
+  Speech.stop();
+  tell.turns = []; tell.puzzle = null;
+  $('tellLog').innerHTML = '';
+  $('tellDone').classList.add('hidden');
+  $('tellAgain').hidden = true;
+  $('tellInput').value = '';
+  if (greet) tellChat('pip', "Tell me a puzzle you have made up. You can say the whole thing, or just how it starts.");
+}
+
+async function tellSay(text) {
+  const t = String(text || '').trim();
+  if (!t || tell.busy) return;
+  tellChat('kid', t);
+  $('tellInput').value = '';
+  $('tellAgain').hidden = false;
+  tell.busy = true;
+  Pip.set('think');
+  const wait = tellChat('pip', 'Let me think…', { speak: false, cls: 'think' });
+
+  let out = null;
+  try {
+    const res = await fetch('/api/compose', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: t, history: tell.turns.slice(0, -1).slice(-20) })
+    });
+    if (res.ok) out = await res.json();
+  } catch { /* handled below */ }
+  wait.remove();
+  tell.busy = false;
+  Pip.set('idle');
+
+  if (!out || out.offline) {
+    // No model, no conversation. Say so plainly and hand them the builder, which
+    // needs nothing and still lets them make something to send.
+    tellChat('pip', 'I cannot listen properly just now. You can still build a puzzle with the picker instead.');
+    showBuilder(true);
+    return;
+  }
+  tellChat('pip', out.say || 'Tell me a bit more.');
+  if (out.trouble === 'not-maths' || out.trouble === 'no-numbers' || out.trouble === 'impossible') {
+    $('tellAgain').hidden = false;
+  }
+  if (out.ready && out.text && out.correct) {
+    const v = Compose.check({ text: out.text, correct: out.correct });
+    if (!v.ok) { tellChat('pip', `Hmm — ${v.why}`); return; }
+    tell.puzzle = { text: out.text, correct: out.correct };
+    $('tellPreview').innerHTML = storyHtml(hydrate({ ...tell.puzzle, id: 'preview' }));
+    $('tellAnswer').innerHTML = `The answer is <b>${v.answer}</b>. Your friend has to work that out.`;
+    $('tellDone').classList.remove('hidden');
+    Sound.correct();
+    Pip.flash('cheer', 1400, 'happy');
+  }
+}
+
+$('tellGo').onclick = () => tellSay($('tellInput').value);
+$('tellInput').addEventListener('keydown', e => { if (e.key === 'Enter') tellSay($('tellInput').value); });
+$('tellAgain').onclick = () => tellReset();
+$('tellRedo').onclick = () => {
+  $('tellDone').classList.add('hidden');
+  tellChat('pip', 'No problem — what should be different?');
+};
+
+function tellListen(btn) {
+  if (tell.listening) { tell.listening(); tell.listening = null; btn.classList.remove('listening'); Pip.set('idle'); return; }
+  Speech.stop();
+  btn.classList.add('listening');
+  Pip.set('listen');
+  tell.listening = Speech.listen({
+    onResult: t => tellSay(t),
+    onEnd: () => { btn.classList.remove('listening'); tell.listening = null; if (Pip.state === 'listen') Pip.set('idle'); },
+    onError: () => { btn.classList.remove('listening'); tell.listening = null; Pip.set('oops');
+                     tellChat('pip', 'I could not hear that. You can type it instead.'); }
+  });
+}
+$('tellMic').onclick = e => tellListen(e.currentTarget);
+$('tellMicBig').onclick = e => tellListen(e.currentTarget);
+
+$('tellTry').onclick = () => {
+  if (!tell.puzzle) return;
+  playAuthored({ ...tell.puzzle, mine: true });
+};
+
+$('tellSend').onclick = async () => {
+  if (!tell.puzzle) return;
+  const btn = $('tellSend');
+  btn.disabled = true; btn.textContent = 'Getting it ready…';
+  try {
+    const res = await fetch('/api/puzzle/mint', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...tell.puzzle, name: ME.name })
+    });
+    const j = await res.json();
+    if (!res.ok || !j.code) throw new Error(j.error || 'could not make the link');
+    $('shareTitle').textContent = 'Your puzzle is ready';
+    $('shareSub').textContent = 'Send this link and your friend can play it straight away.';
+    $('shareLink').value = `${location.origin}/?q=${j.code}`;
+    $('shareModal').classList.remove('hidden');
+    track('share-told');
+  } catch (e) {
+    tellChat('pip', 'I could not make the link just now. Try again in a moment.');
+  }
+  btn.disabled = false; btn.textContent = 'Send it to a friend';
+};
+
+/** Play a puzzle that came from a person rather than from the generator. */
+function playAuthored(raw) {
+  const p = hydrate({ id: 'made-' + Math.random().toString(36).slice(2, 8), authored: true, ...raw });
+  state.world = p.concept || 'add-join';
+  state.band = bandsFor(state.world)[0];
+  state.mode = 'main';
+  state.queue = [];
+  $('makeScreen').classList.add('hidden');
+  $('playScreen').classList.remove('hidden'); $('tabs').classList.add('hidden');
+  $('homeBtn').classList.remove('hidden');
+  loadProblem(p);
+}
+
+/** Swap between telling it and building it. */
+function showBuilder(on, why = '') {
+  $('tellCard').classList.toggle('hidden', on);
+  $('buildIntro').classList.toggle('hidden', !on);
+  for (const el of document.querySelectorAll('.buildstep')) el.classList.toggle('hidden', !on);
+  if (why) $('buildWhy').textContent = why;
+  if (on) { buildPickers(); renderMake(); }
+}
+$('tellSwitch').onclick = () => showBuilder(true);
+$('buildSwitch').onclick = () => showBuilder(false);
 
 const mk = { shape: 3, who: 0, who2: 1, thing: 0, a: 4, b: 6 };
 
@@ -290,8 +500,12 @@ function showMake() {
   $('homeBtn').classList.add('hidden');
   document.documentElement.style.removeProperty('--world');
   Pip.set('idle');
-  buildPickers();
-  renderMake();
+  // With no model there is no one to talk to, so the builder is not a fallback —
+  // it is the whole feature, and saying so is better than an input that does nothing.
+  showBuilder(!state.ai, state.ai ? '' : 'Pip cannot listen right now, so pick the shape, the words and the numbers instead.');
+  if (state.ai) tellReset();
+  $('tellMic').classList.toggle('hidden', !Speech.canListen);
+  $('tellMicBig').classList.toggle('hidden', !Speech.canListen);
 }
 
 function buildPickers() {
@@ -378,17 +592,7 @@ function madeProblem(extra = {}) {
                    authored: true, ...p, ...extra });
 }
 
-$('makeTry').onclick = () => {
-  const p = madeProblem({ mine: true });
-  state.world = p.concept;
-  state.band = bandsFor(p.concept)[0];
-  state.mode = 'main';
-  state.queue = [];
-  $('makeScreen').classList.add('hidden');
-  $('playScreen').classList.remove('hidden'); $('tabs').classList.add('hidden');
-  $('homeBtn').classList.remove('hidden');
-  loadProblem(p);
-};
+$('makeTry').onclick = () => playAuthored({ ...Share.compose(mk), mine: true });
 
 $('makeSend').onclick = () => {
   const url = Share.shareUrl(location.origin, Share.packBuilt(mk, ME.name));
@@ -409,8 +613,7 @@ $('makeSend').onclick = () => {
 // them to find the puzzle again.
 function renderLiked() {
   const el = $('likedList');
-  const ids = (P.liked || []).slice(-8).reverse();
-  const found = ids.map(id => problemById(id)).filter(Boolean);
+  const found = likedList().slice(-8).reverse().map(likedProblem).filter(Boolean);
   if (!found.length) {
     el.innerHTML = '<span class="muted">Nothing here yet.</span>';
     return;
@@ -420,17 +623,35 @@ function renderLiked() {
        <span>${esc(p.plainText.slice(0, 58))}${p.plainText.length > 58 ? '…' : ''}</span>
        <b>Send →</b></button>`).join('');
 }
-$('likedList').addEventListener('click', e => {
+$('likedList').addEventListener('click', async e => {
   const b = e.target.closest('[data-send]');
   if (!b) return;
-  const p = problemById(b.dataset.send);
-  if (!p) return;
-  const url = Share.shareUrl(location.origin, Share.packExisting(p.id, ME.name));
+  const entry = likedList().find(x => x.id === b.dataset.send);
+  if (!entry) return;
   $('shareTitle').textContent = 'Send this puzzle to a friend';
   $('shareSub').textContent = 'One you liked — they get exactly the same one.';
-  $('shareLink').value = url;
+  if (entry.authored) {
+    // Someone's own words, so it goes back through the server to be signed —
+    // passing on a puzzle is minting a new link, not forwarding an old one.
+    b.disabled = true;
+    try {
+      const res = await fetch('/api/puzzle/mint', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: entry.text, correct: entry.correct, name: ME.name })
+      });
+      const j = await res.json();
+      if (!res.ok || !j.code) throw new Error();
+      $('shareLink').value = `${location.origin}/?q=${j.code}`;
+    } catch {
+      b.disabled = false;
+      return;
+    }
+    b.disabled = false;
+  } else {
+    $('shareLink').value = Share.shareUrl(location.origin, Share.packExisting(entry.id, ME.name));
+  }
   $('shareModal').classList.remove('hidden');
-  track('share-liked', p.id);
+  track('share-liked', entry.id);
 });
 
 function renderFriends() {
@@ -556,6 +777,32 @@ async function cloudPull() {
   if (!$('roadScreen').classList.contains('hidden')) renderRoad();
 }
 
+/**
+ * The other direction: children this device knows about that the account does not.
+ *
+ * These used to sit here until a parent found the "Save players on this device to
+ * my account" button, which meant the answer to "is my child's profile safe" was
+ * "only if you pressed a thing you were never told about". A player belongs to the
+ * account, so it goes up on its own the moment there is an account to put it in.
+ * The button stays as a way to retry after a failure.
+ */
+async function cloudPushUp() {
+  if (!Cloud.signedIn()) return 0;
+  let sent = 0;
+  for (const p of Profiles.listProfiles()) {
+    if (p.remote) continue;
+    // An untouched "Player 1" is scaffolding, not a child. Uploading it would put
+    // a placeholder on the account and then on every other device.
+    const prog = Profiles.loadProgress(p.id) || {};
+    if (p.auto && !Object.keys(prog).length) continue;
+    const made = await Cloud.addChild(p.name, prog, { grade: p.grade, gradeYear: p.gradeYear });
+    if (!made) continue;                       // offline or refused; the button can retry
+    Profiles.linkProfile(p.id, made.id);
+    sent++;
+  }
+  return sent;
+}
+
 /** Children on the account that this device has never seen — a new phone, say. */
 /** Returns { added, touchedActive } — the caller needs to know if THIS child changed. */
 async function cloudMergeDown() {
@@ -611,14 +858,14 @@ $('acctOpen').onclick = showParents;
 
 function openWho() { renderWho(); renderAccount(); $('whoModal').classList.remove('hidden'); }
 
-/* ---------------------------- the grown-ups page ---------------------------- */
+/* ----------------------------- parent mode ---------------------------------- */
 
 const gradeOptions = (sel = '') =>
   `<option value="">School year…</option>` +
   Profiles.GRADES.map(g => `<option value="${g.n}" ${String(sel) === String(g.n) ? 'selected' : ''}>${g.label}</option>`).join('');
 
-/* ============================== GROWN-UPS VIEW =============================== */
-// Gated, because a star map with a "For grown-ups" button on it is one tap from a
+/* =============================== PARENT MODE ================================= */
+// Gated, because a star map with a "Parent mode" tab on it is one tap from a
 // seven-year-old reading a paragraph about their own misconceptions. The gate is a
 // speed bump and the screen says so: a child who wants past this can get past it,
 // and the honest thing is to admit that rather than imply a lock.
@@ -743,10 +990,7 @@ function renderReport() {
     : `<p class="pnote">Not enough to say anything worth reading yet. ${esc(conf.why)}
        This section stays empty rather than guessing.</p>`;
 
-  $('rDevice').textContent = who.remote
-    ? 'Anything played signed out, or on a device before you signed in there, is not counted here.'
-    : 'This player is only on this device, so anything played elsewhere is not counted here. '
-      + 'Signing in keeps one record across devices.';
+
 }
 
 $('rPick').addEventListener('change', e => { reportFor = e.target.value; renderReport(); });
@@ -764,7 +1008,7 @@ async function renderParents() {
     $('pMsg').textContent = 'Accounts are not switched on for this copy of the app. '
       + 'Players still work — they are kept on this device.';
     // #pSend went away with the duplicate sign-in form; disable what is actually
-    // on the page, or the whole grown-ups screen throws before it finishes drawing.
+    // on the page, or the whole parent screen throws before it finishes drawing.
     for (const id of ['pEmail', 'pPass', 'pSignIn', 'pSignUp', 'pLinkInstead'])
       if ($(id)) $(id).disabled = true;
   }
@@ -809,8 +1053,9 @@ async function renderParents() {
     };
   });
 
+  // Players go up on their own now, so this is a retry rather than the way it works.
   $('pUpload').textContent = list.some(p => !p.remote)
-    ? 'Save players on this device to my account' : 'All players are on your account';
+    ? 'Try saving them to my account again' : 'Every player is saved to your account';
   $('pUpload').disabled = !list.some(p => !p.remote);
   renderSync();
 }
@@ -882,11 +1127,14 @@ $('pAdd').onclick = async () => {
   if (clash && !confirm(`There is already a player called ${name}. Add another one?`)) return;
   const p = Profiles.createProfile(name, { activate: false });
   if (grade !== '') Profiles.updateProfile(p.id, { grade: Number(grade) });
-  const made = await Cloud.addChild(name, {});
+  const made = Cloud.signedIn()
+    ? await Cloud.addChild(name, {}, { grade: grade === '' ? undefined : Number(grade), gradeYear: p.gradeYear })
+    : null;
   if (made) Profiles.linkProfile(p.id, made.id);
-  msg.className = made ? 'good' : 'bad';
-  msg.textContent = made ? `${name} is ready to play.`
-    : `${name} is ready on this device, but could not be saved to your account.`;
+  msg.className = made || !Cloud.signedIn() ? 'good' : 'bad';
+  msg.textContent = made ? `${name} is ready to play, and saved to your account.`
+    : Cloud.signedIn() ? `${name} is ready on this device. Saving to your account did not work — it will try again next time you open the app.`
+                       : `${name} is ready to play on this device. Sign in and every player goes to your account automatically.`;
   $('pNewName').value = ''; $('pNewGrade').value = '';
   renderParents();
 };
@@ -897,7 +1145,7 @@ $('pUpload').onclick = async () => {
   let ok = 0, failed = 0;
   for (const p of Profiles.listProfiles()) {
     if (p.remote) continue;
-    const made = await Cloud.addChild(p.name, Profiles.loadProgress(p.id));
+    const made = await Cloud.addChild(p.name, Profiles.loadProgress(p.id), { grade: p.grade, gradeYear: p.gradeYear });
     if (made) { Profiles.linkProfile(p.id, made.id); ok++; } else failed++;
   }
   msg.className = failed ? 'bad' : 'good';
@@ -1144,6 +1392,11 @@ addEventListener('resize', () => {
 
 /* --------------------------------- starting --------------------------------- */
 
+// A door for the automated tests to walk a specific level without clicking the
+// whole map to get there. It calls the same function the map calls; there is no
+// behaviour here that a child cannot also reach.
+window.__start = (concept, bandId) => startBand(concept, bandId);
+
 function startBand(concept, bandId, opts = {}) {
   state.world = concept;
   state.band = bandsFor(concept).find(b => b.id === bandId) || bandsFor(concept)[0];
@@ -1198,9 +1451,39 @@ function playNow() {
 }
 
 $('showBtn').onclick = () => {
-  chat('kid', 'Show me', { speak: false });
-  if (!showSituation()) chat('pip', 'I cannot draw this one yet — try "Where do I start?"', { speak: false });
+  chat('kid', 'Picture it for me', { speak: false });
+  if (!showSituation()) chat('pip', cannotDraw(), { emoji: '🖍️', speak: false });
 };
+
+// Written for how a seven-year-old actually asks, which is rarely the word
+// "visualise". Kept deliberately narrow: "what does draw mean" is a word question,
+// and "I drew it on paper, now what" is not a request for anything.
+const PICTURE_RE = new RegExp([
+  '\\b(draw|drawing|sketch)\\b',
+  '\\bpicture\\b',
+  '\\b(show|see) (me )?(it|this|the (story|picture)|what)',
+  '\\bwhat does it look like\\b',
+  '\\b(can|could|will|would) (you|u) (draw|show|picture)',
+  '\\bmake (me )?a picture\\b',
+  '\\bwith (blocks|dots|counters)\\b'
+].join('|'), 'i');
+const NOT_PICTURE_RE = /\b(what|wot) (does|is|d[oe]es) .{0,12}\b(draw|picture|sketch)\b.{0,6}\bmean\b|\bi (already )?drew\b|\bi drawed\b/i;
+
+function wantsPicture(text) {
+  const t = String(text || '').trim();
+  if (!t || NOT_PICTURE_RE.test(t)) return false;
+  return PICTURE_RE.test(t);
+}
+
+/** Said out loud when there is no picture, so the child is never left guessing why. */
+function cannotDraw() {
+  const p = state.current;
+  if (p && p.concept === 'multi-step')
+    return 'This one has two steps in it, so a single picture would leave half the story out. '
+         + 'Try "Where do I start?" — we can take it one step at a time instead.';
+  return 'These numbers are too big to draw without covering the whole screen in blocks. '
+       + 'Try "Where do I start?" and we will talk it through.';
+}
 
 $('playBtn').onclick = playNow;
 $('homeBtn').onclick = showRoad;
@@ -1260,7 +1543,10 @@ function loadProblem(p) {
   $('askrow').classList.remove('hidden');
   // A stuck seven-year-old should not have to TYPE their way out. "Show me" sits
   // next to "Where do I start?" so the whole escalation is tappable.
-  $('showBtn').classList.toggle('hidden', !canShowSituation(p));
+  // The button stays on screen even where the story cannot be drawn. Hiding it
+  // makes the tool unlearnable — a child who saw it once and cannot find it again
+  // concludes it was never there. When it cannot draw, it says so in one line.
+  $('showBtn').classList.toggle('dim', !canShowSituation(p));
 
   // The whole screen takes the colour of the world you are standing in.
   const c = CONCEPTS[p.concept];
@@ -1283,7 +1569,7 @@ function loadProblem(p) {
     <button class="likebtn ${isLiked(p.id) ? 'on' : ''}" id="likeBtn"
             title="Like this puzzle" aria-label="Like this puzzle">❤️</button>`;
   $('backBtn').onclick = showRoad;
-  $('likeBtn').onclick = e => e.currentTarget.classList.toggle('on', toggleLike(p.id));
+  $('likeBtn').onclick = e => e.currentTarget.classList.toggle('on', toggleLike(p));
 
   const banner = $('fromFriend');
   if (p.from) {
@@ -1463,6 +1749,20 @@ async function ask(message, { intent = null, el = null, show = null } = {}) {
   }
   $('askInput').value = '';
   if (show !== false) chat('kid', show || text, { speak: false });
+
+  // "can you draw it", "show me a picture", "I want to see it" — a child asking for
+  // the picture in their own words should get the picture, not a paragraph about
+  // the picture. This runs before the model call: it is faster, it is free, and a
+  // model asked to "draw" can only describe, which is the opposite of the point.
+  if (intent !== 'word' && wantsPicture(text)) {
+    if (showSituation()) {
+      chat('pip', 'Here it is — this is what the story says. It stops before the answer, '
+                + 'so the counting is still yours.', { emoji: '🖍️', speak: false });
+    } else {
+      chat('pip', cannotDraw(), { emoji: '🖍️', speak: false });
+    }
+    return;
+  }
 
   const t = thinking();
   Pip.set('think');

@@ -15,9 +15,11 @@
     "gentest": "node test/generator.mjs",
     "viztest": "node --import ./test/dom-stub.mjs test/mathviz.mjs",
     "progtest": "node test/progress.mjs",
-    "test": "npm run gentest && npm run viztest && npm run progtest && npm run proftest && npm run sharetest && npm run insighttest",
+    "test": "npm run gentest && npm run viztest && npm run progtest && npm run proftest && npm run sharetest && npm run insighttest && npm run pictest && npm run composetest",
     "proftest": "node --import ./test/ls-stub.mjs test/profiles.mjs",
     "sharetest": "node test/share.mjs",
-    "insighttest": "node test/insight.mjs"
+    "insighttest": "node test/insight.mjs",
+    "pictest": "node test/picture.mjs",
+    "composetest": "node test/compose.mjs"
   }
 }

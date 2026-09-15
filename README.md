@@ -647,6 +647,181 @@ would.
 else. It rides along in the existing progress record, so it follows a signed-in child between
 devices with no new table and no new endpoint.
 
+**Revised on the 15th**, after the tester read it:
+
+- The tab said *Grown-ups*; it says **Parent mode**, which tells you what you are about to get.
+- *"What this does not tell you"* is **gone**. It was written to be honest about the limits of
+  the data, and two of its lines were about the child's honesty — whether they guessed, whether
+  someone had helped — which turns a page about a child's thinking into a page about whether to
+  trust them. Reframing it did not save it: the tester read the second version and still found no
+  use in it, which is the right verdict on a section a parent has to scroll past to reach nothing.
+- The *"What is stored"* paragraph came out too. **What the app keeps has not changed** — a first
+  name, a school year, what was solved, and a summary of how they worked, with nothing the child
+  typed or said — so if this ships to other people's children it is worth saying somewhere they
+  can find it. Right now it is said only in this README.
+
+## Shipped on 15 Sept — "Picture it for me"
+
+Pip had been asking children to draw the story since the first week. The app could only draw
+back in two of the five worlds, and the button that did it **hid itself** whenever it could
+not — which is the worst of both: a tool a child sees once, cannot find again, and concludes
+was never there.
+
+- **Subtraction and sharing can now be drawn**, which took the coverage from two worlds to
+  four. Two-step stories still cannot, because there is no single picture of a two-step story
+  and drawing half of one would mislead.
+- **The button is always on screen**, dimmed where the story cannot be drawn, and it says why
+  in one line — too many blocks, or two steps — rather than silently vanishing.
+- **A child can just ask.** "Can you draw it", "show me a picture", "what does it look like"
+  and a dozen phrasings now produce the picture itself. This runs before the model call: it is
+  instant, it is free, and a model asked to draw can only describe, which is the opposite of
+  what was wanted. "What does *draw* mean?" is still a word question, and "I already drew it"
+  still is not a request.
+
+**Two stories, one equation, two different pictures.** This is where the work actually was.
+`a - b` is *giving some away* (one pile, the leavers struck through, count what stayed) or
+*comparing two amounts* (two rows, one under the other, count the overhang). `a / b` is
+*sharing between b people* (deal round by round, count one person's share) or *making groups
+of b* (fill group by group, count the groups). Drawing 80 muffins as ten piles when the story
+says trays of ten is drawing a story nobody told. The templates already knew which they had
+written, so each problem now carries its `kind`; the words are the fallback, and the tests
+check both routes agree on every generated problem.
+
+**A comparison is interleaved, not stacked.** Drawn as two blocks, 39 against 22 is four rows
+of blue above three rows of green, and the gap is nowhere on screen — so the caption *"the bit
+with nothing under it"* would have been a lie. Each ten of the shorter amount now sits directly
+beneath its ten of the longer one, and the leftover really is the bit with nothing beneath it.
+
+**The drawing still never draws the answer.** Every caption stops at *"that is the whole story"*
+and hands the counting back. `test/picture.mjs` reads every caption out of the source and fails
+if any of them states a total, and separately fails if a drawing ends without asking the child
+to count. It also fails if any world drops below half its problems drawable, or if a problem in
+the *easiest* level of any world cannot be drawn — that is where a stuck child actually lives.
+
+Where it stops: subtraction is capped at sixty. Seventy-seven against sixty-one is a hundred
+and thirty-eight blocks, and past a certain point a picture becomes a wall, which explains
+nothing. Half of "up to 100" loses the drawing rather than getting a useless one.
+
+## Also on 15 Sept — the stories have to describe a real world
+
+Found by the household tester, in the best possible way — by reading one:
+
+> Leo read **667 pages on Monday** and 322 pages on Tuesday.
+
+The sum is right and nobody reads 667 pages in a day. A seven-year-old notices that
+*before* they notice the maths, and a maths app that describes an impossible world has
+spent trust it needs for the parts where it asks to be believed.
+
+The mechanism that allowed it was a binary flag: templates were marked as surviving
+three-digit numbers or not, and "pages" was marked yes — which is true of *pages in a book*
+and false of *pages read on Monday*. A flag cannot tell those apart, so it is now a number:
+
+- **Every story declares the largest and smallest each of its two quantities can plausibly
+  be.** A bird feeder holds about twenty-five sparrows; a stadium needs hundreds of seats.
+  Those are facts about the world, so they sit next to the sentence rather than in a
+  difficulty table.
+- **A band may only use stories whose whole range it fits inside.** The band's range is
+  sampled from the number generator itself rather than written down twice — a second table
+  next to `numbersFor()` would be one refactor away from disagreeing with it, silently.
+- **Both ends matter, and the floor is the one that is easy to forget.** A ceiling alone
+  keeps "667 pages on Monday" out and lets "a stadium with 86 seats" straight in. A stadium
+  is no more believable small than a bird feeder is believable large.
+
+Seven new stories were written for the places this left thin — a stadium, a library, a food
+bank collection, a step count, two villages, a bus, an orchard — because the honest fix for
+"this story cannot hold three-digit numbers" is a story that can, not a bigger number in the
+same story.
+
+`npm run gentest` now fails if any story does not declare its limits, if a band can hand a
+story numbers outside them, or if a band is left with fewer than four believable stories —
+which is when a set of six starts repeating itself. Old shared links still rebuild the
+problem they always did; the story lists grew at the end, and every id minted before today
+carries an index below the old length.
+
+## Shipped on 15 Sept — the child tells Pip the puzzle
+
+The tester was eating an ice cream and told his dad a puzzle he had made up:
+
+> Mum bought 2 boxes of ice creams. Each box has 6 ice creams. Robin ate 2 ice creams.
+> How many are left?
+
+Except he did not say it like that. It came out over four or five turns, with a parent asking
+*how many are in each box* and *what happens next*, and when it was finally whole he could not
+wait to send it to his friends. **That conversation is the feature.** The fill-in-the-blanks
+builder shipped a week earlier produced valid puzzles that were nobody's idea.
+
+So: a child says their puzzle out loud, Pip asks for whatever is missing one question at a
+time, and writes it down. `2x6-2` — two steps, three numbers, their mum, their brother — which
+the template builder could not have expressed at all.
+
+**The rule the whole prompt is built around: Pip never invents a number.** A model asked to
+tidy up a half-told puzzle will happily supply the missing six, and the child will not notice
+that the puzzle they are about to send is not the one they made up. Missing numbers get asked
+for. Never filled in.
+
+### What changed about safety, and why it is not a climbdown
+
+On 7 Sept child authoring was narrowed to fill-in-the-blanks, on the argument that a word
+blocklist cannot make free prose safe. That argument still holds. What was wrong was the
+conclusion drawn from it — that the *prose* was the problem. It was not. **The problem was that
+the link carried the trust.** A link containing text can be edited by hand, so what lands on a
+second child's screen was never checked by anything on our side.
+
+That is now fixed properly rather than avoided:
+
+- A composed puzzle is **minted by the server**, which signs it (HMAC) having watched it come
+  out of a supervised composing session.
+- Opening a `?q=` link **asks the server**, which verifies the signature before returning
+  anything. A link edited by hand fails and is refused.
+- The signature does not excuse the puzzle: the structural check runs again on the way out, in
+  case the rules have tightened since it was minted.
+- `PUZZLE_SECRET` keeps links working across deploys. Without it a fresh key is made at boot
+  and the banner says so.
+
+`public/shared/compose.js` holds the structural contract, run on both sides: two to four
+numbers, every digit in the story tappable, every number in the equation present in the story,
+an answer that is whole and not below zero, a question mark at the end, no links or contact
+details. When the model says it is ready and the structure disagrees, the child gets another
+question rather than a puzzle their friend cannot solve.
+
+`test/compose.mjs` covers eleven ways a composed puzzle can be wrong, eight ways a link can be
+tampered with, and that the equation reader takes arithmetic and nothing else.
+
+### What was kept
+
+- **The builder is still there**, as "Build one instead" and as the whole feature when there is
+  no model — the floor has not moved. With no key the maker opens on the builder and says why,
+  rather than showing a microphone that does nothing.
+- **Pip, not a second character.** A new name would mean a child learning who to ask for what.
+  This is the same Pip who asks about a story while you solve it, asking about a story while you
+  write one.
+- **A shared puzzle still earns no stars**, and still says "🎁 From a friend" rather than
+  claiming a level.
+
+### Also fixed
+
+Hearting a friend's puzzle silently did nothing: likes stored an id, and `problemById` only
+knows ids the generator made, so a friend's puzzle vanished from *Puzzles you liked*. A like now
+stores whatever it takes to bring the puzzle back — an id for ours, the story itself for one a
+person wrote. Passing one on re-mints a fresh signed link rather than forwarding the old one.
+
+## Also on 15 Sept — a player belongs to the account, not to a laptop
+
+Players were created on the device and only reached the account when a parent found the button
+that said *Save players on this device to my account*. Which meant the true answer to "is my
+child's profile safe" was "only if you pressed a thing nobody told you about".
+
+Now every player goes up on its own as soon as there is an account to put it in — on sign-in,
+and on every boot after. The order matters: the account's children come **down** first, because
+merging adopts a local child by name, and pushing first would put a second Ava on the account.
+An untouched "Player 1" is scaffolding rather than a child and is not uploaded. The button is
+still there, as a retry after a failure rather than as the way it works.
+
+Found while doing it: **`cloud.js` was dropping the school year.** `saveChild` destructured only
+`{ name, progress }`, so `grade` and `gradeYear` never went into the request body — even though
+every caller passed them and the server had always accepted them. A school year set on one
+device stayed on that device. Fixed in the same place it was lost.
+
 ## To do
 
 - [x] ~~**Switch the AI layer on**~~ — live on Gemini. Word help and the starting nudges are
@@ -741,11 +916,11 @@ devices with no new table and no new endpoint.
       3. A real TTS API behind a server route (`/api/speak`), returning audio the page plays, with
          Web Speech as the fallback. ElevenLabs ≈ $50–100 per million characters, Google Chirp 3 HD
          ≈ $30. At demo volume this is pennies. Cache by phrase — the same stories are read often.
-- [ ] **Situation diagrams for word help.** Draw the *relationship* the problem describes
-      (3 baskets of 6; 15 marbles with 6 crossed out; a bar comparing 14 and 9) from the
-      problem's own data — deterministic SVG, no model call, no cost per tap. Must NOT be
-      shown before the child has committed to an equation: a picture of the structure gives
-      away the operation, the same way the starting ladder must never name one.
+- [x] ~~**Situation diagrams for word help.**~~ Built for all four single-step worlds and
+      promoted to a tool a child can ask for by name — see *Shipped on 15 Sept*. The gate the
+      original note insisted on is still there: the drawing stops before the total, and asking
+      for it costs the star, exactly like a hint.
+
 - [ ] Parent view — the misconception data is all there, it needs a screen
 - [ ] Fractions and geometry worlds
 

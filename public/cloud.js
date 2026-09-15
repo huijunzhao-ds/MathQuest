@@ -128,14 +128,18 @@ export async function children() {
   return r.ok && r.json ? (r.json.children || []) : null;   // null means "could not tell"
 }
 
-export async function addChild(name, progress) {
-  const r = await call('/api/account/children', { method: 'POST', body: JSON.stringify({ name, progress }) });
+export async function addChild(name, progress, { grade, gradeYear } = {}) {
+  const r = await call('/api/account/children',
+    { method: 'POST', body: JSON.stringify({ name, progress, grade, gradeYear }) });
   return r.ok && r.json ? r.json.child : null;
 }
 
-export async function saveChild(id, { name, progress } = {}, opts = {}) {
+// grade and gradeYear were missing from this destructure, so the school year a
+// parent set on one device never left it: the server has always accepted them,
+// and every caller has always sent them.
+export async function saveChild(id, { name, progress, grade, gradeYear } = {}, opts = {}) {
   const r = await call(`/api/account/children/${id}`,
-    { method: 'PUT', body: JSON.stringify({ name, progress }), ...opts });
+    { method: 'PUT', body: JSON.stringify({ name, progress, grade, gradeYear }), ...opts });
   return r.ok;   // false is a real failure, and the caller must show it
 }
 

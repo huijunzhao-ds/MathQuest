@@ -11,7 +11,8 @@
 //
 // The last one is the point: it tests the whole chain, not just the generator.
 
-import { BANDS, generateSet, problemFromId, fitsBand, shapeBand, bandOfProblem } from '../public/shared/generator.js';
+import { BANDS, generateSet, problemFromId, fitsBand, shapeBand, bandOfProblem,
+         believableTemplates, templateBounds, bandNumberRange } from '../public/shared/generator.js';
 import { hydrate, diagnose, safeCanonical, safeEval, MISCONCEPTIONS } from '../public/shared/engine.js';
 
 const SEEDS = 40;          // seeds per band
@@ -150,4 +151,63 @@ if (fails.length) {
   console.log(`\n  ${fails.length} failures\n`);
   process.exit(1);
 }
+
+/* ------------------------- do the stories describe a real world? -------------
+ * Correct arithmetic in an impossible world still loses a child. "Leo read 667
+ * pages on Monday" is the failure this guards: the sum is right and nobody reads
+ * 667 pages in a day, and a seven-year-old notices that before they notice the
+ * maths. Each story declares how big and how small its quantities can plausibly
+ * be; a band may only use stories whose whole range it fits inside.
+ */
+{
+  const storyFails = [];
+  for (const concept of Object.keys(BANDS)) {
+    if (concept === 'multi-step') continue;
+    for (const band of BANDS[concept]) {
+      const ok = believableTemplates(concept, band.id);
+      const r = bandNumberRange(concept, band.id);
+
+      // A band with too few believable stories repeats itself within one sitting.
+      if (ok.length < 4)
+        storyFails.push(`${concept}/${band.id} has only ${ok.length} believable stories — a set of six would repeat`);
+
+      // Every story it is allowed to use must hold every number it can deal.
+      for (const i of ok) {
+        const b = templateBounds(concept, i);
+        if (!b) continue;
+        if (b.max && (r.aHi > b.max[0] || r.bHi > b.max[1]))
+          storyFails.push(`${concept}/${band.id} may use story ${i}, which tops out at ${b.max} but can be handed ${r.aHi}/${r.bHi}`);
+        if (b.min && (r.aLo < b.min[0] || r.bLo < b.min[1]))
+          storyFails.push(`${concept}/${band.id} may use story ${i}, which needs at least ${b.min} but can be handed ${r.aLo}/${r.bLo}`);
+      }
+
+      // And the generator must actually stay inside that set.
+      for (const p of generateSet(concept, band.id, 40, 'believable')) {
+        const nums = [...p.text.matchAll(/\[\[(\d+)\|/g)].map(m => Number(m[1]));
+        if (nums.some(n => n > 1000))
+          storyFails.push(`${p.id} puts a number over 1000 into a story`);
+      }
+    }
+  }
+  // Every story must declare its limits, or the check above is checking nothing.
+  for (const concept of Object.keys(BANDS)) {
+    if (concept === 'multi-step') continue;
+    for (let i = 0; ; i++) {
+      const b = templateBounds(concept, i);
+      if (!b) break;
+      if (!b.max) storyFails.push(`${concept} story ${i} does not say how big its numbers can get`);
+    }
+  }
+  if (storyFails.length) {
+    console.log('');
+    for (const f of storyFails.slice(0, 12)) console.log('  FAIL  ' + f);
+    if (storyFails.length > 12) console.log(`  ... and ${storyFails.length - 12} more`);
+    console.log(`\n  ${storyFails.length} story failures\n`);
+    process.exit(1);
+  }
+  const counts = Object.keys(BANDS).filter(c => c !== 'multi-step')
+    .map(c => `${c} ${BANDS[c].map(b => believableTemplates(c, b.id).length).join('/')}`);
+  console.log('  every band only tells stories its numbers fit: ' + counts.join(', '));
+}
+
 console.log('  all invariants hold\n');

@@ -1032,8 +1032,29 @@ button.tool.mic.listening { background: rgba(252,165,165,.18); border-color: rgb
   margin-left: 9px; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
   color: var(--ink-dim); background: rgba(255,255,255,.08); white-space: nowrap;
 }
-.rhonest { margin: 12px 0 0; padding-left: 20px; }
-.rhonest li { font-size: 14.5px; font-weight: 600; color: var(--ink-dim); line-height: 1.65; margin-bottom: 8px; }
 #rPick { max-width: 170px; }
 
 .grownhead { margin-bottom: 14px; }
+
+/* A cell that has left the pile, and one that marks the gap in a comparison.
+   Both stay on screen: a child who can see what went can count what stayed. */
+.mvcell.mvgone { opacity: .3; background: #FCA5A5; }
+.mvcell.mvgone::after {
+  content: ''; position: absolute; left: 8%; right: 8%; top: 46%; height: 3px;
+  background: rgba(0,0,0,.55); border-radius: 2px;
+}
+.mvcell.mvmark {
+  outline: 3px dashed var(--gold); outline-offset: 2px;
+  animation: mvpulse 1.4s ease-in-out infinite;
+}
+@keyframes mvpulse { 50% { outline-color: rgba(255,201,74,.35); } }
+.tool.dim { opacity: .55; }
+
+/* ------------------------------ telling a puzzle ---------------------------- */
+#tellLog { max-height: 300px; overflow-y: auto; margin: 14px 0 12px; }
+#tellLog:empty { display: none; }
+.tellstart { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+#tellMicBig { font-size: 15.5px; padding: 11px 18px; }
+#tellPreview { font-size: 20px; line-height: 1.75; margin-top: 10px; }
+#tellDone { margin-top: 22px; border-top: 1px solid rgba(255,255,255,.09); padding-top: 4px; }
+#tellCard .askrow { display: flex; }

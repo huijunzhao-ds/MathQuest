@@ -49,7 +49,7 @@
   <nav class="tabs" id="tabs">
     <button class="tab on" data-tab="map"><span>🗺️</span>Star map</button>
     <button class="tab" data-tab="social"><span>🎁</span>Puzzles &amp; friends</button>
-    <button class="tab" data-tab="parents"><span>👋</span>Grown-ups</button>
+    <button class="tab" data-tab="parents"><span>👋</span>Parent mode</button>
   </nav>
 
   <!-- ============================ STAR MAP (home) =========================== -->
@@ -114,9 +114,9 @@
     </div>
 
     <div class="card" id="pGateCard">
-      <h2 class="ph1">For grown-ups</h2>
+      <h2 class="ph1">Parent mode</h2>
       <div id="pGate">
-        <p class="pnote">This part is for a grown-up. It is a speed bump, not a lock &mdash;
+        <p class="pnote">This part is for a parent. It is a speed bump, not a lock &mdash;
           it is here so a child does not wander in, not to keep a determined one out.</p>
         <div class="gaterow">
           <label id="gateQ" for="gateA"></label>
@@ -159,18 +159,6 @@
         <div id="rStyle"></div>
       </div>
 
-      <div class="card">
-        <h2>What this does not tell you</h2>
-        <ul class="rhonest">
-          <li>Whether anyone was sitting next to them. A parent reading the story aloud looks
-            exactly like a fast, confident solve.</li>
-          <li>Whether a right answer was reasoned or guessed. Two numbers and one operator is a
-            small space to guess in, especially on the easier levels.</li>
-          <li>Anything they did on paper, out loud, or in their head. Only taps are visible here.</li>
-          <li>Whether a word lookup meant they were stuck, or just curious.</li>
-          <li id="rDevice"></li>
-        </ul>
-      </div>
     </div>
 
     <div id="pBody" class="hidden"><div class="card">
@@ -214,11 +202,6 @@
         </div>
       </div>
 
-      <p class="pnote pfine">What is stored: the first name you type, a school year, what the
-        child has solved, and a summary of how they worked &mdash; timings, taps, and the words
-        they asked the meaning of. <b>Nothing a child typed or said is kept.</b> No birthdate, no
-        address, nothing about the school. The school year is stamped once and moves up on its own
-        each August, so there is nothing to keep editing.</p>
     </div></div>
   </section>
 
@@ -228,25 +211,67 @@
       <div class="pip" id="pipMake"></div>
       <div class="herotext">
         <div class="hellokicker">Puzzle maker</div>
-        <div class="hellomsg" id="makeMsg">Build a puzzle for a friend to solve.</div>
+        <div class="hellomsg" id="makeMsg">Make up a puzzle and send it to a friend.</div>
       </div>
       <button class="ghost" id="makeBack">Back</button>
     </div>
 
-    <div class="card">
+    <!-- Telling Pip the puzzle is the main way in. The builder below is what you
+         get with no model available, and what you get if talking is not working. -->
+    <div class="card" id="tellCard">
+      <div class="cardhead">
+        <h2>Tell me your puzzle</h2>
+        <button class="tool" id="tellSwitch">Build one instead</button>
+      </div>
+      <p class="starkey">Say the puzzle you have in your head &mdash; all of it, or just the start.
+         I will ask about the bits you leave out, then write it down for you.</p>
+      <div class="chatlog" id="tellLog"></div>
+      <div class="askrow">
+        <input id="tellInput" placeholder="Say it, or type it here&hellip;" autocomplete="off">
+        <button class="tool mic hidden" id="tellMic" title="Say it out loud" aria-label="Say it out loud">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
+        </button>
+        <button class="tool go" id="tellGo">Send</button>
+      </div>
+      <div class="tellstart" id="tellStart">
+        <button class="tool" id="tellMicBig">🎤 Say your puzzle</button>
+        <button class="tool" id="tellAgain" hidden>Start again</button>
+      </div>
+
+      <div id="tellDone" class="hidden">
+        <h3 class="subhead">Your puzzle</h3>
+        <div class="story" id="tellPreview"></div>
+        <div id="tellAnswer" class="makeanswer"></div>
+        <div class="chbtns">
+          <button class="primary big" id="tellSend">Send it to a friend</button>
+          <button class="ghost" id="tellTry">Try it myself first</button>
+          <button class="ghost" id="tellRedo">Change something</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card hidden" id="buildIntro">
+      <div class="cardhead">
+        <h2>Build a puzzle</h2>
+        <button class="tool" id="buildSwitch">Tell me it instead</button>
+      </div>
+      <p class="starkey" id="buildWhy">Pick the shape, the words and the numbers.</p>
+    </div>
+
+    <div class="card buildstep hidden">
       <h2>1 &middot; What kind of puzzle?</h2>
       <p class="starkey">This is the real choice. It decides what your friend has to work out.</p>
       <div class="shapes" id="makeShapes"></div>
     </div>
 
-    <div class="card" id="makeWords">
+    <div class="card buildstep hidden" id="makeWords">
       <h2>2 &middot; Who and what</h2>
       <div class="pickrow"><label>Who</label><div class="chips" id="pickWho"></div></div>
       <div class="pickrow hidden" id="pickWho2Row"><label>And</label><div class="chips" id="pickWho2"></div></div>
       <div class="pickrow"><label>Counting</label><div class="chips" id="pickThing"></div></div>
     </div>
 
-    <div class="card">
+    <div class="card buildstep hidden">
       <h2>3 &middot; The numbers</h2>
       <p class="starkey">Choosing numbers that make it interesting is most of the puzzle.</p>
       <div class="numrow">
@@ -263,7 +288,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card buildstep hidden">
       <h2>Your puzzle</h2>
       <div class="story" id="makePreview"></div>
       <div id="makeAnswer" class="makeanswer"></div>
@@ -338,7 +363,7 @@
             <div class="vizhost" id="vizHost"></div>
           </div>
           <details class="grownup hidden" id="fbDetails">
-            <summary>For grown-ups</summary>
+            <summary>For a parent</summary>
             <div id="fbDiag"></div>
           </details>
         </div>
@@ -365,9 +390,9 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 9a3 3 0 1 1 4 2.8c-.9.4-1 1-1 2.2"/><circle cx="12" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>
               Word help
             </button>
-            <button class="tool hidden" id="showBtn">
+            <button class="tool" id="showBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="M3 16.5l4.5-4 3.5 3 3.5-3.5L21 16"/></svg>
-              Show me
+              Picture it for me
             </button>
             <button class="tool" id="startBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.4"/><path d="M12 4v2.6M12 17.4V20M4 12h2.6M17.4 12H20M6.6 6.6l1.9 1.9M15.5 15.5l1.9 1.9M17.4 6.6l-1.9 1.9M8.5 15.5l-1.9 1.9"/></svg>
@@ -402,9 +427,9 @@
     </div>
 
     <div class="grownups hidden" id="acctBox">
-      <div class="grownups-h">For grown-ups</div>
+      <div class="grownups-h">Parent mode</div>
       <p class="whonote" id="acctLine"></p>
-      <button class="ghost" id="acctOpen">Sign in &amp; manage players</button>
+      <button class="ghost" id="acctOpen">Sign in &amp; set up players</button>
     </div>
 
     <p class="whonote">Each person has their own road and their own stars.</p>

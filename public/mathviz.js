@@ -262,13 +262,69 @@ export function nounOf(label) {
 /** Can the story be drawn without drawing the answer? */
 export function canShowSituation(problem) {
   if (!problem) return false;
+  const q = problem.quantities || [];
   if (problem.concept === 'mult-groups')
     return problem.groups >= 1 && problem.per >= 1 && problem.groups * problem.per <= 120;
-  if (problem.concept === 'add-join') {
-    const q = problem.quantities || [];
+  if (problem.concept === 'add-join')
     return q.length === 2 && q[0].value + q[1].value <= 120;
-  }
-  return false;
+  // 77 against 61 is a hundred and thirty-eight blocks on screen. The structure is
+  // still legible interleaved, but past sixty it stops being a picture and becomes
+  // a wall, and a wall explains nothing. Half of "up to 100" loses the drawing;
+  // that is the honest trade rather than showing something useless.
+  if (problem.concept === 'sub-difference')
+    return q.length === 2 && Math.max(q[0].value, q[1].value) <= 60;
+  // Sharing draws the pile AND the groups it goes into, so it grows both ways.
+  // 100 ÷ 10 turns up in the EASIEST division level, which is exactly where a
+  // stuck child lives, so the gate has to reach it — the stage scales to fit.
+  if (problem.concept === 'div-share')
+    return q.length === 2 && q[1].value >= 1 && q[1].value <= 10
+        && q[0].value <= 100 && q[0].value % q[1].value === 0 && q[0].value / q[1].value <= 10;
+  return false;   // two-step stories have no single picture, and pretending otherwise would mislead
+}
+
+/** "How many trays does the baker need?" -> "trays". The thing being counted. */
+function askedNoun(problem) {
+  const plain = String(problem.text || '').replace(/\[\[(\d+)\|[^\]]*\]\]/g, '$1');
+  const m = /how many ([a-z][a-z'-]*)/i.exec(plain);
+  return m ? m[1].toLowerCase() : 'groups';
+}
+
+// "count what one children got" is the kind of sentence that makes a child stop
+// trusting the voice. The irregulars that actually appear in these stories are
+// listed rather than guessed at.
+const IRREGULAR = { children: 'child', people: 'person', men: 'man', women: 'woman',
+                    feet: 'foot', mice: 'mouse', geese: 'goose', teeth: 'tooth',
+                    boxes: 'box', bunches: 'bunch', buses: 'bus', dishes: 'dish',
+                    glasses: 'glass', benches: 'bench' };
+const ALREADY_SINGULAR = new Set(Object.values(IRREGULAR));
+function singular(w) {
+  const t = String(w || '').toLowerCase();
+  if (IRREGULAR[t]) return IRREGULAR[t];
+  // "bus" is already singular and ends in s; stripping it gives "bu". Every
+  // singular this table knows about is safe from the rules below.
+  if (ALREADY_SINGULAR.has(t) || /ss$/.test(t) || t.length <= 3) return t;
+  if (/(ses|xes|zes|ches|shes)$/.test(t)) return t.slice(0, -2);
+  if (/[^aeiou]ies$/.test(t)) return t.slice(0, -3) + 'y';
+  if (/[^s]s$/.test(t)) return t.slice(0, -1);
+  return t;
+}
+
+/** Sharing between people, or making groups of a size? Different pictures. */
+function divKind(problem) {
+  if (problem.kind === 'share' || problem.kind === 'group') return problem.kind;
+  const t = String(problem.text || '').replace(/\[\[(\d+)\|[^\]]*\]\]/g, '$1');
+  // Grouping says how big ONE container is — "each tray holds 10", "boxes of 10",
+  // "tied into bunches of 5". Sharing says how many people it goes between.
+  return /\beach [a-z'-]+ (holds|has|fits|takes|seats)\b|\b(into|in) [a-z'-]+ of \d/i.test(t)
+    ? 'group' : 'share';
+}
+
+/** Take-away or compare? The template says so; the words are the fallback. */
+function subKind(problem) {
+  if (problem.kind === 'take' || problem.kind === 'compare') return problem.kind;
+  const t = String(problem.text || '').toLowerCase();
+  if (/\bhow (much|many) (more|longer|taller|fewer|less)\b|\bthan\b/.test(t)) return 'compare';
+  return 'take';
 }
 
 export function mountSituation(host, problem) {
@@ -319,6 +375,116 @@ export function mountSituation(host, problem) {
       { caption: `That is the whole story. Now count the ${itemNoun} — how many altogether?`,
         apply() { } }
     ];
+  } else if (problem.concept === 'sub-difference') {
+    const [A, B] = q;
+    const nounA = nounOf(A.label), nounB = nounOf(B.label);
+    const hi = Math.max(A.value, B.value), lo = Math.min(A.value, B.value);
+
+    if (subKind(problem) === 'take') {
+      // One pile. The ones that go are marked, not deleted — a child who can see
+      // what left can count what stayed, and that IS the subtraction.
+      stage.style.width = Math.min(PER_ROW, hi) * PITCH + 'px';
+      stage.style.height = rowsFor(hi) * PITCH + 'px';
+      const cells = [];
+      for (let i = 0; i < hi; i++) { const e = cellEl('a'); stage.appendChild(e); cells.push(e); }
+      const gone = cells.slice(hi - lo);          // take from the end, so the rest stay put
+      steps = [
+        { caption: `${hi} ${nounA} to start with.`,
+          apply() { cells.forEach((e, i) => { const p = at(i); place(e, p.x, p.y, { fade: 1, kind: 'a' }); }); } },
+        { caption: `${lo} of them go.`,
+          apply() { gone.forEach((e, k) => setTimeout(() => e.classList.add('mvgone'), k * 70)); } },
+        { caption: `That is the whole story. Now count the ones that are left.`, apply() { } }
+      ];
+    } else {
+      // Two rows, lined up from the same edge, INTERLEAVED so that a long pair
+      // still reads as a comparison. Drawn as two separate blocks, 39 against 22
+      // is a block of blue above a block of green and the gap is nowhere on the
+      // screen — which would make the caption a lie. Row by row, each ten of the
+      // shorter amount sits directly under its ten of the longer one, so the
+      // leftover really is the bit with nothing beneath it.
+      const w = Math.min(PER_ROW, hi);
+      const rows = rowsFor(hi);
+      stage.style.width = w * PITCH + 'px';
+      stage.style.height = (rows * 2 * PITCH) + (rows - 1) * 10 + PITCH + 'px';
+      const big = A.value >= B.value ? A : B, small = A.value >= B.value ? B : A;
+      const bigNoun = nounOf(big.label), smallNoun = nounOf(small.label);
+      const pairAt = (i, lower) => {
+        const row = Math.floor(i / PER_ROW), col = i % PER_ROW;
+        return { x: col * PITCH, y: row * (2 * PITCH + 10) + (lower ? PITCH : 0) };
+      };
+      const top = [], bot = [];
+      for (let i = 0; i < hi; i++) { const e = cellEl('a'); stage.appendChild(e); top.push(e); }
+      for (let i = 0; i < lo; i++) { const e = cellEl('b'); stage.appendChild(e); bot.push(e); }
+      steps = [
+        { caption: `${big.value} — ${bigNoun}.`,
+          apply() {
+            top.forEach((e, i) => { const p = pairAt(i, false); place(e, p.x, p.y, { fade: 1 }); });
+            bot.forEach((e, i) => { const p = pairAt(i, true); place(e, p.x, p.y, { fade: 0 }); });
+          } },
+        { caption: `${small.value} — ${smallNoun}. Lined up underneath, one for one.`,
+          apply() { bot.forEach((e, i) => setTimeout(() => {
+            const p = pairAt(i, true); place(e, p.x, p.y, { fade: 1 });
+          }, i * 45)); } },
+        { caption: `That is the whole story. The ones with nothing underneath them are what you are looking for — count those.`,
+          apply() { top.slice(lo).forEach(e => e.classList.add('mvmark')); } }
+      ];
+    }
+
+  } else if (problem.concept === 'div-share') {
+    // Dealt out one at a time, round by round, the way a child deals cards. The
+    // last round finishes and the caption stops: it never says how many each got.
+    const [A, B] = q;
+    const pile = A.value;
+    const itemNoun = nounOf(A.label);
+    // Two different stories wear the same equation. "80 muffins, trays of 10" is
+    // not "80 muffins between 10 friends": one asks how many trays, the other how
+    // many each. Dealing 80 into ten piles would draw a story nobody told.
+    const grouping = divKind(problem) === 'group';
+    const parts = grouping ? Math.floor(pile / B.value) : B.value;
+    const each  = grouping ? B.value : Math.floor(pile / B.value);
+    const groupNoun = grouping ? askedNoun(problem) : nounOf(B.label);
+    const GROUP_W = PITCH + 16;
+    // A hundred blocks in rows of ten is ten rows before the sharing even starts.
+    // Widening the pile keeps the whole drawing in one eyeful; fitToCard() then
+    // shrinks whatever that comes to until it fits the card.
+    const pileRow = pile > 40 ? 20 : PER_ROW;
+    const pileAt = i => ({ x: (i % pileRow) * PITCH, y: Math.floor(i / pileRow) * PITCH });
+    const pileRows = Math.max(1, Math.ceil(pile / pileRow));
+    const cols = Math.min(parts, 10);
+    stage.style.width = Math.max(cols * GROUP_W, Math.min(pileRow, pile) * PITCH) + 'px';
+    stage.style.height = (pileRows + Math.ceil(parts / cols) * (each + 1) + 1) * PITCH + 'px';
+    const top = (pileRows + 1) * PITCH;
+    const cells = [];
+    for (let i = 0; i < pile; i++) { const e = cellEl('a'); stage.appendChild(e); cells.push(e); }
+
+    steps = [
+      { caption: `${pile} ${itemNoun} in one pile.`,
+        apply() { cells.forEach((e, i) => { const p = pileAt(i); place(e, p.x, p.y, { fade: 1, kind: 'a' }); }); } },
+      { caption: grouping
+          // B.value, not `each` — they are the same number here, but `each` is the
+          // ANSWER in the other branch and no caption should ever be able to print it.
+          // The plural as the story wrote it — re-pluralising a singular turns
+          // "buses" into "buss", and nobody proofreads a caption they generated.
+          ? `Put into ${groupNoun} of ${B.value}, one ${singular(groupNoun)} at a time.`
+          : `Shared out between ${parts} ${groupNoun}, one at a time, fairly.`,
+        apply() {
+          // Dealt round by round when sharing; filled group by group when grouping,
+          // because that is the order the child would do it in each case.
+          for (let i = 0; i < each * parts; i++) {
+            const g = grouping ? Math.floor(i / each) : i % parts;
+            const row = grouping ? i % each : Math.floor(i / parts);
+            const band = Math.floor(g / cols);
+            setTimeout(() => place(cells[i],
+              (g % cols) * GROUP_W,
+              top + band * (each + 1) * PITCH + row * PITCH, { kind: 'b' }), i * 80);
+          }
+        } },
+      { caption: grouping
+          ? `That is the whole story. Now count the ${groupNoun}.`
+          : `That is the whole story. Now count what one ${singular(groupNoun)} got.`,
+        apply() { } }
+    ];
+
   } else {
     const [A, B] = q;
     const nounA = nounOf(A.label), nounB = nounOf(B.label);
@@ -341,6 +507,11 @@ export function mountSituation(host, problem) {
     ];
   }
 
+  // Whatever each drawing worked out it needed, shrink it until it fits the card.
+  // A picture a child has to scroll is not a picture.
+  fitToCard(host, stage);
+  addEventListener('resize', () => fitToCard(host, stage));
+
   let timers = [], stopped = false;
   const stop = () => { stopped = true; timers.forEach(clearTimeout); timers = []; };
   function run() {
@@ -353,6 +524,19 @@ export function mountSituation(host, problem) {
   }
   run();
   return { replay: run, stop };
+}
+
+/** Scale a stage down (never up) so it sits inside the card it was given. */
+function fitToCard(host, stage) {
+  const room = host.clientWidth || 0;
+  const want = parseFloat(stage.style.width) || 0;
+  if (!room || !want) return;
+  const k = Math.min(1, room / want);
+  stage.style.transformOrigin = 'top left';
+  stage.style.transform = k < 1 ? `scale(${k})` : '';
+  // The box still has to reserve the height the scaled drawing actually uses.
+  const h = parseFloat(stage.style.height) || 0;
+  stage.style.marginBottom = k < 1 ? `${-(h * (1 - k))}px` : '';
 }
 
 /* ------------------------------- the explainer ------------------------------ */

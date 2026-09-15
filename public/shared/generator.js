@@ -98,55 +98,67 @@ export function bandById(concept, id) { return bandsFor(concept).find(b => b.id 
 
 const T = {
   'add-join': [
-    { big: 0, f: (a, b) => `There are [[${a}|blue fish]] blue fish and [[${b}|orange fish]] orange fish in the tank. How many fish are in the tank altogether?` },
-    { big: 1, f: (a, b, N) => `${N} read [[${a}|pages on Monday]] pages on Monday and [[${b}|pages on Tuesday]] pages on Tuesday. How many pages did ${N} read in all?` },
-    { big: 1, f: (a, b) => `A jar holds [[${a}|green marbles]] green marbles and [[${b}|white marbles]] white marbles. How many marbles are in the jar?` },
-    { big: 1, f: (a, b, N) => `${N} had [[${a}|stickers at the start]] stickers. ${N} was given [[${b}|stickers received]] more. How many stickers does ${N} have now?` },
-    { big: 1, f: (a, b) => `A shelf has [[${a}|picture books]] picture books and [[${b}|chapter books]] chapter books. How many books are on the shelf altogether?` },
-    { big: 1, f: (a, b) => `In the car park there are [[${a}|red cars]] red cars and [[${b}|blue cars]] blue cars. How many cars are in the car park?` },
-    { big: 0, f: (a, b) => `[[${a}|sparrows first]] sparrows are at the bird feeder. [[${b}|sparrows that arrive]] more fly down to join them. How many birds are at the feeder now?` },
-    { big: 0, f: (a, b, N) => `${N} found [[${a}|shells in the morning]] shells in the morning and [[${b}|shells in the afternoon]] shells in the afternoon. How many shells did ${N} find in total?` },
-    { big: 0, f: (a, b) => `One class has [[${a}|children in the first class]] children and another class has [[${b}|children in the second class]] children. They go on a trip together. How many children go on the trip?` },
-    { big: 1, f: (a, b, N) => `${N} has [[${a}|coins in one pocket]] coins in one pocket and [[${b}|coins in the other pocket]] coins in the other. How many coins does ${N} have altogether?` }
+    { max: [40, 40],   f: (a, b) => `There are [[${a}|blue fish]] blue fish and [[${b}|orange fish]] orange fish in the tank. How many fish are in the tank altogether?` },
+    { max: [120, 120],   f: (a, b, N) => `${N} read [[${a}|pages on Monday]] pages on Monday and [[${b}|pages on Tuesday]] pages on Tuesday. How many pages did ${N} read in all?` },
+    { max: [300, 300], f: (a, b) => `A jar holds [[${a}|green marbles]] green marbles and [[${b}|white marbles]] white marbles. How many marbles are in the jar?` },
+    { max: [400, 200], f: (a, b, N) => `${N} had [[${a}|stickers at the start]] stickers. ${N} was given [[${b}|stickers received]] more. How many stickers does ${N} have now?` },
+    { max: [60, 60],   f: (a, b) => `A shelf has [[${a}|picture books]] picture books and [[${b}|chapter books]] chapter books. How many books are on the shelf altogether?` },
+    { max: [500, 500], f: (a, b) => `In the car park there are [[${a}|red cars]] red cars and [[${b}|blue cars]] blue cars. How many cars are in the car park?` },
+    { max: [25, 25],   f: (a, b) => `[[${a}|sparrows first]] sparrows are at the bird feeder. [[${b}|sparrows that arrive]] more fly down to join them. How many birds are at the feeder now?` },
+    { max: [60, 60],   f: (a, b, N) => `${N} found [[${a}|shells in the morning]] shells in the morning and [[${b}|shells in the afternoon]] shells in the afternoon. How many shells did ${N} find in total?` },
+    { max: [35, 35],   f: (a, b) => `One class has [[${a}|children in the first class]] children and another class has [[${b}|children in the second class]] children. They go on a trip together. How many children go on the trip?` },
+    { max: [60, 60],   f: (a, b, N) => `${N} has [[${a}|coins in one pocket]] coins in one pocket and [[${b}|coins in the other pocket]] coins in the other. How many coins does ${N} have altogether?` },
+    { max: [90, 90],   f: (a, b) => `A bus had [[${a}|people already on the bus]] people on it. [[${b}|people who got on]] more got on at the next stop. How many people are on the bus now?` },
+    { max: [120, 120], f: (a, b, N) => `${N} picked [[${a}|apples picked]] apples and [[${b}|pears picked]] pears. How many pieces of fruit did ${N} pick altogether?` },
+    // Three-digit stories need something that is genuinely counted in hundreds.
+    // Stretching "pages read on Monday" to 667 is how a maths app loses a child's
+    // trust: the arithmetic is right and the world is wrong.
+    { max: [999, 999], min: [100, 100], f: (a, b) => `A stadium has [[${a}|seats downstairs]] seats downstairs and [[${b}|seats upstairs]] seats upstairs. How many seats does the stadium have altogether?` },
+    { max: [999, 999], min: [40, 20], f: (a, b) => `A library had [[${a}|books already there]] books. It bought [[${b}|books bought]] more. How many books does the library have now?` },
+    { max: [999, 999], min: [40, 20], f: (a, b) => `A school collected [[${a}|cans in September]] cans in September and [[${b}|cans in October]] cans in October for the food bank. How many cans is that altogether?` },
+    { max: [999, 999], min: [100, 100], f: (a, b, N) => `${N} counted [[${a}|steps before lunch]] steps before lunch and [[${b}|steps after lunch]] steps after lunch. How many steps did ${N} walk in all?` }
   ],
 
   'sub-difference': [
-    { kind: 'take',    big: 1, f: (a, b, N) => `${N} had [[${a}|marbles at the start]] marbles. ${N} gave [[${b}|marbles given away]] of them to a friend. How many marbles does ${N} have left?` },
-    { kind: 'take',    big: 0, f: (a, b) => `There were [[${a}|birds at the start]] birds on a wire. [[${b}|birds that flew away]] of them flew away. How many birds are still on the wire?` },
-    { kind: 'take',    big: 0, f: (a, b, N) => `${N} baked [[${a}|cupcakes baked]] cupcakes. The family ate [[${b}|cupcakes eaten]] of them. How many cupcakes are left?` },
-    { kind: 'take',    big: 1, f: (a, b, N) => `A book has [[${a}|pages in the book]] pages. ${N} has read [[${b}|pages already read]] pages. How many pages are left to read?` },
-    { kind: 'take',    big: 1, f: (a, b) => `A train has [[${a}|seats on the train]] seats. [[${b}|seats taken]] seats are taken. How many seats are still empty?` },
-    { kind: 'take',    big: 1, f: (a, b, N) => `${N} had [[${a}|stickers at the start]] stickers and used [[${b}|stickers used]] of them on a card. How many stickers does ${N} have now?` },
-    { kind: 'compare', big: 0, f: (a, b) => `A red ribbon is [[${a}|length of the red ribbon]] cm long. A blue ribbon is [[${b}|length of the blue ribbon]] cm long. How much longer is the red ribbon than the blue one?` },
-    { kind: 'compare', big: 0, f: (a, b) => `One tower is [[${a}|blocks in the tall tower]] blocks tall. Another tower is [[${b}|blocks in the short tower]] blocks tall. How many more blocks does the tall tower have?` },
-    { kind: 'compare', big: 1, f: (a, b, N) => `${N} scored [[${a}|points ${N} scored]] points. A friend scored [[${b}|points the friend scored]] points. How many more points did ${N} score?` },
-    { kind: 'compare', big: 0, f: (a, b, N) => `${N} has [[${a}|pencils ${N} has]] pencils. A friend has [[${b}|pencils the friend has]] pencils. How many more pencils does ${N} have?` }
+    { kind: 'take',    max: [200, 200], f: (a, b, N) => `${N} had [[${a}|marbles at the start]] marbles. ${N} gave [[${b}|marbles given away]] of them to a friend. How many marbles does ${N} have left?` },
+    { kind: 'take',    max: [30, 30],   f: (a, b) => `There were [[${a}|birds at the start]] birds on a wire. [[${b}|birds that flew away]] of them flew away. How many birds are still on the wire?` },
+    { kind: 'take',    max: [48, 48],   f: (a, b, N) => `${N} baked [[${a}|cupcakes baked]] cupcakes. The family ate [[${b}|cupcakes eaten]] of them. How many cupcakes are left?` },
+    { kind: 'take',    max: [999, 999], min: [24, 3], f: (a, b, N) => `A book has [[${a}|pages in the book]] pages. ${N} has read [[${b}|pages already read]] pages. How many pages are left to read?` },
+    { kind: 'take',    max: [600, 600], min: [16, 3], f: (a, b) => `A train has [[${a}|seats on the train]] seats. [[${b}|seats taken]] seats are taken. How many seats are still empty?` },
+    { kind: 'take',    max: [300, 300], f: (a, b, N) => `${N} had [[${a}|stickers at the start]] stickers and used [[${b}|stickers used]] of them on a card. How many stickers does ${N} have now?` },
+    { kind: 'compare', max: [150, 150], f: (a, b) => `A red ribbon is [[${a}|length of the red ribbon]] cm long. A blue ribbon is [[${b}|length of the blue ribbon]] cm long. How much longer is the red ribbon than the blue one?` },
+    { kind: 'compare', max: [40, 40],   f: (a, b) => `One tower is [[${a}|blocks in the tall tower]] blocks tall. Another tower is [[${b}|blocks in the short tower]] blocks tall. How many more blocks does the tall tower have?` },
+    { kind: 'compare', max: [200, 200], f: (a, b, N) => `${N} scored [[${a}|${'$'}{N}'s points]] points. A friend scored [[${b}|the friend's points]] points. How many more points did ${N} score?` },
+    { kind: 'compare', max: [40, 40],   f: (a, b, N) => `${N} has [[${a}|${'$'}{N}'s pencils]] pencils. A friend has [[${b}|the friend's pencils]] pencils. How many more pencils does ${N} have?` },
+    { kind: 'take',    max: [999, 999], min: [100, 40], f: (a, b) => `A stadium has [[${a}|seats in the stadium]] seats. [[${b}|seats sold]] of them have been sold. How many seats are still free?` },
+    { kind: 'take',    max: [999, 999], min: [40, 15], f: (a, b) => `A school set out to collect [[${a}|cans they wanted]] cans for the food bank. So far they have [[${b}|cans collected]] cans. How many more do they need?` },
+    { kind: 'compare', max: [999, 999], min: [120, 60], f: (a, b) => `One village has [[${a}|people in the big village]] people living in it. A nearby village has [[${b}|people in the small village]] people. How many more people live in the bigger village?` }
   ],
 
   'mult-groups': [
-    { f: (a, b) => `There are [[${a}|number of baskets]] baskets. Each basket has [[${b}|apples in each basket]] apples. How many apples are there altogether?` },
-    { f: (a, b) => `A shelf holds [[${a}|number of boxes]] boxes of crayons. Each box has [[${b}|crayons in each box]] crayons. How many crayons in all?` },
-    { f: (a, b) => `The hall has [[${a}|number of rows]] rows of chairs. Each row has [[${b}|chairs in each row]] chairs. How many chairs are there in total?` },
-    { f: (a, b, N) => `${N} has [[${a}|number of sheets]] sheets of stickers. Each sheet has [[${b}|stickers on each sheet]] stickers. How many stickers does ${N} have in all?` },
-    { f: (a, b, N) => `${N} buys [[${a}|number of packs]] packs of cards. Each pack holds [[${b}|cards in each pack]] cards. How many cards does ${N} have?` },
-    { f: (a, b) => `There are [[${a}|number of bags]] bags of marbles. Each bag has [[${b}|marbles in each bag]] marbles. How many marbles are there altogether?` },
-    { f: (a, b) => `A library has [[${a}|number of shelves]] shelves. Each shelf holds [[${b}|books on each shelf]] books. How many books are in the library?` },
-    { f: (a, b) => `[[${a}|number of plates]] plates are put out. Each plate has [[${b}|cookies on each plate]] cookies on it. How many cookies are there in total?` },
-    { f: (a, b) => `[[${a}|number of vans]] vans take children to a match. Each van carries [[${b}|children in each van]] children. How many children go to the match?` },
-    { f: (a, b) => `A garden has [[${a}|number of flower beds]] flower beds. Each bed has [[${b}|plants in each bed]] plants. How many plants are in the garden?` }
+    { max: [12, 25], f: (a, b) => `There are [[${a}|number of baskets]] baskets. Each basket has [[${b}|apples in each basket]] apples. How many apples are there altogether?` },
+    { max: [12, 24], f: (a, b) => `A shelf holds [[${a}|number of boxes]] boxes of crayons. Each box has [[${b}|crayons in each box]] crayons. How many crayons in all?` },
+    { max: [12, 25], f: (a, b) => `The hall has [[${a}|number of rows]] rows of chairs. Each row has [[${b}|chairs in each row]] chairs. How many chairs are there in total?` },
+    { max: [12, 25], f: (a, b, N) => `${N} has [[${a}|number of sheets]] sheets of stickers. Each sheet has [[${b}|stickers on each sheet]] stickers. How many stickers does ${N} have in all?` },
+    { max: [12, 25], f: (a, b, N) => `${N} buys [[${a}|number of packs]] packs of cards. Each pack holds [[${b}|cards in each pack]] cards. How many cards does ${N} have?` },
+    { max: [12, 25], f: (a, b) => `There are [[${a}|number of bags]] bags of marbles. Each bag has [[${b}|marbles in each bag]] marbles. How many marbles are there altogether?` },
+    { max: [12, 25], f: (a, b) => `A library has [[${a}|number of shelves]] shelves. Each shelf holds [[${b}|books on each shelf]] books. How many books are in the library?` },
+    { max: [12, 15], f: (a, b) => `[[${a}|number of plates]] plates are put out. Each plate has [[${b}|cookies on each plate]] cookies on it. How many cookies are there in total?` },
+    { max: [12, 16], f: (a, b) => `[[${a}|number of vans]] vans take children to a match. Each van carries [[${b}|children in each van]] children. How many children go to the match?` },
+    { max: [12, 25], f: (a, b) => `A garden has [[${a}|number of flower beds]] flower beds. Each bed has [[${b}|plants in each bed]] plants. How many plants are in the garden?` }
   ],
 
   'div-share': [
-    { kind: 'share', f: (a, b) => `There are [[${a}|cookies to share]] cookies. [[${b}|number of friends]] friends share them equally. How many cookies does each friend get?` },
-    { kind: 'share', f: (a, b) => `[[${a}|pencils to share]] pencils are shared equally among [[${b}|number of children]] children. How many pencils does each child get?` },
-    { kind: 'share', f: (a, b) => `[[${a}|total stickers]] stickers are split evenly into [[${b}|number of bags]] bags. How many stickers are in each bag?` },
-    { kind: 'share', f: (a, b, N) => `${N} shares [[${a}|total sweets]] sweets equally between [[${b}|number of cousins]] cousins. How many sweets does each cousin get?` },
-    { kind: 'share', f: (a, b) => `[[${a}|total marbles]] marbles are shared fairly among [[${b}|number of players]] players. How many marbles does each player get?` },
-    { kind: 'group', f: (a, b) => `A baker puts [[${a}|total muffins]] muffins into trays. Each tray holds [[${b}|muffins in one tray]] muffins. How many trays does the baker need?` },
-    { kind: 'group', f: (a, b) => `A school needs to seat [[${a}|students to seat]] students. Each bus holds [[${b}|seats on one bus]] students. How many buses does the school need?` },
-    { kind: 'group', f: (a, b) => `There are [[${a}|total eggs]] eggs. Each carton holds [[${b}|eggs in one carton]] eggs. How many cartons are needed?` },
-    { kind: 'group', f: (a, b) => `[[${a}|total books]] books are packed into boxes of [[${b}|books in one box]] books. How many boxes are used?` },
-    { kind: 'group', f: (a, b) => `[[${a}|total flowers]] flowers are tied into bunches of [[${b}|flowers in one bunch]] flowers. How many bunches are made?` }
+    { kind: 'share', max: [144, 12], f: (a, b) => `There are [[${a}|cookies to share]] cookies. [[${b}|number of friends]] friends share them equally. How many cookies does each friend get?` },
+    { kind: 'share', max: [144, 12], f: (a, b) => `[[${a}|pencils to share]] pencils are shared equally among [[${b}|number of children]] children. How many pencils does each child get?` },
+    { kind: 'share', max: [144, 12], f: (a, b) => `[[${a}|total stickers]] stickers are split evenly into [[${b}|number of bags]] bags. How many stickers are in each bag?` },
+    { kind: 'share', max: [96, 8], f: (a, b, N) => `${N} shares [[${a}|total sweets]] sweets equally between [[${b}|number of cousins]] cousins. How many sweets does each cousin get?` },
+    { kind: 'share', max: [144, 12], f: (a, b) => `[[${a}|total marbles]] marbles are shared fairly among [[${b}|number of players]] players. How many marbles does each player get?` },
+    { kind: 'group', max: [144, 12], f: (a, b) => `A baker puts [[${a}|total muffins]] muffins into trays. Each tray holds [[${b}|muffins in one tray]] muffins. How many trays does the baker need?` },
+    { kind: 'group', max: [300, 60], f: (a, b) => `A school needs to seat [[${a}|students to seat]] students. Each bus holds [[${b}|seats on one bus]] students. How many buses does the school need?` },
+    { kind: 'group', max: [144, 12], f: (a, b) => `There are [[${a}|total eggs]] eggs. Each carton holds [[${b}|eggs in one carton]] eggs. How many cartons are needed?` },
+    { kind: 'group', max: [144, 12], f: (a, b) => `[[${a}|total books]] books are packed into boxes of [[${b}|books in one box]] books. How many boxes are used?` },
+    { kind: 'group', max: [144, 12], f: (a, b) => `[[${a}|total flowers]] flowers are tied into bunches of [[${b}|flowers in one bunch]] flowers. How many bunches are made?` }
   ]
 };
 
@@ -441,6 +453,11 @@ function build(concept, bandId, tplIndex, seed) {
     // Which number is the group count and which is the size of a group. Drawing
     // the situation needs to know, and the equation alone cannot say.
     ...(concept === 'mult-groups' ? { groups: n.a, per: n.b } : {}),
+    // Take-away and compare are the same equation and a completely different
+    // picture: one crosses things out, the other lines two rows up and marks the
+    // gap. The template knows which it wrote, so it says so rather than leaving
+    // the drawing to guess from the words.
+    ...(kind ? { kind } : {}),
     text, correct, accept, traps
   };
 }
@@ -458,10 +475,53 @@ function sameShape(x, y) {
  * A run of `count` problems for one concept and band. `seed` makes a run
  * reproducible; leave it out for a fresh set each visit.
  */
-// Not every story survives three-digit numbers. "847 sparrows on a wire" is
-// absurd; "847 pages in a book" is fine. Templates carry `big`, and the largest
-// bands draw only from the ones that still read.
-const BIG_BANDS = new Set(['a999', 's999']);
+// Not every story survives every number. "847 sparrows on a wire" is absurd, and
+// so is "667 pages read on Monday" — the arithmetic is right and the world is
+// wrong, which is exactly how a maths app loses a child's trust.
+//
+// So each template declares the largest each of its two quantities can plausibly
+// be, and a band only draws from the templates that can hold its numbers. The
+// ceiling is a fact about the STORY ("a bird feeder holds about twenty-five
+// sparrows"), not about the maths, so it belongs next to the sentence rather than
+// in a difficulty table.
+
+/** The range of a and b this band actually produces, found by asking it. */
+const rangeCache = new Map();
+function bandRange(concept, bandId) {
+  const key = concept + '|' + bandId;
+  if (rangeCache.has(key)) return rangeCache.get(key);
+  // Sampled rather than tabulated: a second table next to numbersFor() would be
+  // one refactor away from disagreeing with it, and silently.
+  let aHi = 0, bHi = 0, aLo = Infinity, bLo = Infinity;
+  for (let i = 0; i < 400; i++) {
+    const n = numbersFor(concept, bandId, makeRng(`ceil|${key}|${i}`));
+    aHi = Math.max(aHi, n.a || 0); aLo = Math.min(aLo, n.a || 0);
+    bHi = Math.max(bHi, n.b || 0); bLo = Math.min(bLo, n.b || 0);
+  }
+  const out = { aHi, bHi, aLo, bLo };
+  rangeCache.set(key, out);
+  return out;
+}
+
+/**
+ * Does this story stay believable at the sizes this band deals in?
+ *
+ * Both ends matter, and the second one is easy to miss. A ceiling alone keeps
+ * "667 pages on Monday" out, and lets "a stadium with 86 seats" straight in — a
+ * stadium is no more believable small than a bird feeder is believable large.
+ */
+function fitsStory(tpl, r) {
+  if (!tpl) return true;
+  if (tpl.max) {
+    const [aMax, bMax] = tpl.max;
+    if (r.aHi > aMax || r.bHi > bMax) return false;
+  }
+  if (tpl.min) {
+    const [aMin, bMin] = tpl.min;
+    if (r.aLo < aMin || r.bLo < bMin) return false;
+  }
+  return true;
+}
 
 function eligibleTemplates(concept, bandId) {
   if (concept === 'multi-step') {
@@ -469,11 +529,28 @@ function eligibleTemplates(concept, bandId) {
     return frames.map((_, i) => i);
   }
   const list = T[concept] || [];
-  const all = list.map((_, i) => i);
-  if (!BIG_BANDS.has(bandId)) return all;
-  const big = all.filter(i => list[i].big);
-  return big.length ? big : all;
+  const r = bandRange(concept, bandId);
+  const fits = list.map((_, i) => i).filter(i => fitsStory(list[i], r));
+  // Never return nothing: a band with no believable story is a bug in the story
+  // list, and `gentest` fails on it — but a child mid-game gets a problem anyway.
+  return fits.length ? fits : list.map((_, i) => i);
 }
+
+/** Exported for the tests, which check no band is running on the fallback. */
+export function believableTemplates(concept, bandId) {
+  if (concept === 'multi-step') return eligibleTemplates(concept, bandId);
+  const list = T[concept] || [];
+  const r = bandRange(concept, bandId);
+  return list.map((_, i) => i).filter(i => fitsStory(list[i], r));
+}
+
+export function templateBounds(concept, index) {
+  const t = (T[concept] || [])[index];
+  if (!t) return null;
+  return { max: t.max || null, min: t.min || null };
+}
+
+export function bandNumberRange(concept, bandId) { return bandRange(concept, bandId); }
 
 export function generateSet(concept, bandId, count = 6, seed = null) {
   const base = seed == null ? Math.random().toString(36).slice(2, 8) : String(seed);
