@@ -65,7 +65,7 @@ parent signs in and their children's progress follows them to any device.
 ```sql
 create table public.child (
   id uuid primary key default gen_random_uuid(),
-  owner uuid not null references auth.users(id) on delete cascade,
+  owner uuid not null default auth.uid() references auth.users(id) on delete cascade,
   name text not null check (char_length(name) between 1 and 24),
   grade smallint,
   grade_year smallint,
@@ -893,6 +893,66 @@ deliberately rather than by me at midnight.
 Two smaller limits worth knowing: "since you last looked" is remembered per device, so checking
 on a laptop does not clear the badge on a phone; and the marks clear when the card renders, so
 a parent who opens the page and leaves without reading has spent them.
+
+## 16 Sept — the friends routes were never reachable
+
+The console on the deployed build said `/api/friends/overview` returned **404**, and a 404 is a
+different animal from a 502: the route was not there at all. Every `/api/friends/*` handler had
+been written *inside* the `if (url.pathname.startsWith('/api/account'))` block, so the router
+could never reach any of them. The whole feature — codes, requests, accepting, the parent's
+review card — was unreachable in production from the moment it shipped.
+
+**The browser tests passed the entire time**, because they stubbed `fetch` and answered the
+client's calls themselves. They proved the UI did the right thing with a reply and proved
+nothing at all about whether anything would ever send one.
+
+So `test/routes.mjs` now starts the **real** server and calls every `/api/...` path it can find
+in the client source. A 404 fails it; a 401 passes, because "the route exists and wants a
+sign-in" is the correct answer to an unauthenticated call. It also checks that no account or
+friends endpoint answers 200 without a token, and that the open ones still work without one.
+Breaking the route block again makes it fail in about a second — verified by breaking it on
+purpose.
+
+The lesson is narrower than "write integration tests": **a stub proves the half of the contract
+you wrote it from.** Anything mocked at the boundary needs one test that does not mock it.
+
+## 16 Sept — a player would not save, and the app would not say why
+
+The first thing the deployed version did was refuse to upload a player, and all it said was
+*"Saved 0, but 1 did not go up."* The message is the bug worth writing down: the server had the
+reason all along — PostgREST says exactly what it refused and why — and `addChild` threw it away
+on the way back, returning `null`. An hour of guessing that could have been one sentence.
+
+So: `addChild` now carries the reason back, the parents page prints it, and the raw database
+text goes to the console. `whySupabase()` turns the four complaints that actually happen into
+something a parent can act on — a policy refusal, a missing owner, SQL that has not been run,
+a duplicate — and anything unrecognised still produces a sentence rather than a blank.
+
+**It was the owner.** The response body said `42501: new row violates row-level security policy
+for table "child"` — and that is what an insert with no `owner` looks like when the policy is
+`with check (auth.uid() = owner)`. The column landed NULL, `auth.uid() = NULL` evaluates to NULL
+rather than true, and the row was refused. It reads like a permissions problem and it is a
+missing value, which is why it survived a night of staring at policies.
+
+Fixed twice over, because either alone is enough and both together cannot fail:
+
+- **The server names the owner.** It reads the subject out of the parent's own token and sets
+  `owner` on the row. The token is not verified there — row level security still decides
+  everything — it is read only so the row can say whose it is.
+- **`sql/04-owner-default.sql`** adds `default auth.uid()` to the column, which is what the
+  schema in this README should have said all along. It now does.
+- **`Number(null)` is `0`, and `0` is finite.** The guard on the school year tested whether the
+  value was a number rather than whether it was set, so a child with no school year was being
+  filed as being in Kindergarten. Both the insert and the update had it.
+
+`sql/check.sql` is a read-only query set for the next time the database refuses something: it
+shows whether `owner` has a default, whether the friend-code trigger attached, whether all the
+functions exist, and what policies are on `child`.
+
+Chrome's issues panel was also right about the sign-in form: a password field outside a `<form>`
+makes password managers behave badly, and seven fields had no label. The auth fields are a real
+form now, submitting properly, and every input in the app has a label — visually hidden where
+there is no room for one.
 
 ## To do
 

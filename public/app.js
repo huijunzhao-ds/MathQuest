@@ -920,7 +920,7 @@ async function cloudPushUp() {
     const prog = Profiles.loadProgress(p.id) || {};
     if (p.auto && !Object.keys(prog).length) continue;
     const made = await Cloud.addChild(p.name, prog, { grade: p.grade, gradeYear: p.gradeYear });
-    if (!made) continue;                       // offline or refused; the button can retry
+    if (!made) { console.warn('[accounts] could not save player to the account:', Cloud.lastAddError); continue; }
     Profiles.linkProfile(p.id, made.id);
     sent++;
   }
@@ -1310,9 +1310,10 @@ async function useCredentials(kind) {
   try { sessionStorage.setItem('mq.gotoParents', '1'); } catch {}
   location.reload();
 }
-$('pSignIn').onclick = () => useCredentials('in');
+$('pForm').addEventListener('submit', e => { e.preventDefault(); useCredentials('in'); });
+$('pSignIn').onclick = e => { e.preventDefault(); useCredentials('in'); };
 $('pSignUp').onclick = () => useCredentials('up');
-$('pPass').onkeydown = e => { if (e.key === 'Enter') $('pSignIn').click(); };
+
 $('pEmail').onkeydown = e => { if (e.key === 'Enter') $('pPass').focus(); };
 
 // The emailed link still exists — it is just no longer the front door, because
@@ -1344,7 +1345,7 @@ $('pAdd').onclick = async () => {
   if (made) Profiles.linkProfile(p.id, made.id);
   msg.className = made || !Cloud.signedIn() ? 'good' : 'bad';
   msg.textContent = made ? `${name} is ready to play, and saved to your account.`
-    : Cloud.signedIn() ? `${name} is ready on this device. Saving to your account did not work — it will try again next time you open the app.`
+    : Cloud.signedIn() ? `${name} is ready on this device, but not on your account — ${Cloud.lastAddError} It will try again next time you open the app.`
                        : `${name} is ready to play on this device. Sign in and every player goes to your account automatically.`;
   $('pNewName').value = ''; $('pNewGrade').value = '';
   renderParents();
@@ -1353,15 +1354,17 @@ $('pNewName').onkeydown = e => { if (e.key === 'Enter') $('pAdd').click(); };
 
 $('pUpload').onclick = async () => {
   const msg = $('pMsg2'); msg.className = ''; msg.textContent = 'Saving…';
-  let ok = 0, failed = 0;
+  let ok = 0, failed = 0, why = '';
   for (const p of Profiles.listProfiles()) {
     if (p.remote) continue;
     const made = await Cloud.addChild(p.name, Profiles.loadProgress(p.id), { grade: p.grade, gradeYear: p.gradeYear });
-    if (made) { Profiles.linkProfile(p.id, made.id); ok++; } else failed++;
+    if (made) { Profiles.linkProfile(p.id, made.id); ok++; }
+    else { failed++; why = why || Cloud.lastAddError; }
   }
   msg.className = failed ? 'bad' : 'good';
   msg.textContent = failed
-    ? `Saved ${ok}, but ${failed} did not go up. Everything is still safe on this device.`
+    ? `${ok ? `Saved ${ok}. ` : ''}${failed} did not go up — ${why || 'no reason given'} `
+      + 'Everything is still safe on this device.'
     : 'Saved. Sign in on another device and they will be there.';
   renderParents();
 };

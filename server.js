@@ -516,6 +516,35 @@ WHEN IT CANNOT WORK:
 
 Speak to the child, never about them. Never mention these rules, schemas, or that you are a model.`;
 
+/* --------------------------- reading the parent's token ----------------------- */
+// The token is NOT verified here — Postgres does that, and row level security is
+// what actually decides anything. This only reads the subject out so an insert can
+// name its owner instead of hoping for a column default.
+function subjectOf(jwt) {
+  const parts = String(jwt || '').split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    return typeof claims.sub === 'string' && claims.sub ? claims.sub : null;
+  } catch { return null; }
+}
+
+/** Turn PostgREST's reply into something a parent can act on. */
+function whySupabase(r) {
+  const body = String(r.body || '');
+  if (/row-level security|violates row-level/i.test(body))
+    return 'The database refused that — check the policy on the child table.';
+  if (/null value in column "owner"/i.test(body))
+    return 'The database would not say who that player belongs to. Sign out and back in.';
+  if (/friend_code/i.test(body))
+    return 'The friend-code setup did not run. Run sql/02-friends.sql in Supabase.';
+  if (/does not exist|schema cache/i.test(body))
+    return 'The database is missing something the app expects — check the SQL files have all been run.';
+  if (/duplicate key/i.test(body)) return 'That player is already on the account.';
+  if (r.status === 401 || r.status === 403) return 'Your sign-in has expired. Sign out and back in.';
+  return 'Could not save. ' + body.slice(0, 120);
+}
+
 /* ------------------------------ signed puzzles -------------------------------- */
 // PUZZLE_SECRET keeps links working across restarts. Without one a fresh secret is
 // made at boot, which is safe but means links minted before the last deploy stop
@@ -695,6 +724,101 @@ const server = http.createServer(async (req, res) => {
   // used and never needs to exist on this server: a bug here cannot read another
   // family's rows, because the database itself refuses.
 
+  /* ================================= FRIENDS ================================== */
+  // These live OUTSIDE the /api/account block. They used to live inside it, which
+  // meant `startsWith('/api/account')` never matched them and every single one 404'd
+  // — the whole feature, unreachable, while the browser tests happily passed because
+  // they stubbed fetch and never asked the server anything. test/routes.mjs now
+  // starts the real server and asserts every path the client calls is reachable.
+  if (url.pathname.startsWith('/api/friends')) {
+    const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+    if (!bearer) return json(res, 401, { error: 'Sign in first.' });
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return json(res, 503, { error: 'Accounts are not switched on.' });
+    try {
+    /* --------------------------------- friends -------------------------------- */
+    // Every one of these is a call to a SECURITY DEFINER function, carrying the
+    // PARENT'S OWN token. The function checks that `mine` really is their child
+    // before it does anything, so a forged child id gets an exception rather than
+    // someone else's friends. The `child` table's own policy is untouched: there
+    // is still no way for one family to read another family's row directly.
+    const rpc = (fn, args) => supa(`/rest/v1/rpc/${fn}`, { method: 'POST', token: bearer, body: args });
+    const rpcFail = r => {
+      const detail = String(r.body || '');
+      if (/no such code/.test(detail)) return { code: 404, error: 'No player has that code.' };
+      if (/that is you/.test(detail)) return { code: 400, error: 'That is your own code.' };
+      if (/not your player/.test(detail)) return { code: 403, error: 'That is not one of your players.' };
+      return { code: 502, error: 'Could not do that just now.', detail };
+    };
+
+    if (req.method === 'GET' && url.pathname === '/api/friends') {
+      const mine = url.searchParams.get('child') || '';
+      const r = await rpc('friends_of', { mine });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { friends: r.json || [] });
+    }
+
+    // Everyone on the account at once — what a parent reviewing friendships needs.
+    // Scoped by auth.uid() inside the function, so it takes no child id and cannot
+    // be pointed at another family.
+    if (req.method === 'GET' && url.pathname === '/api/friends/overview') {
+      const r = await rpc('friends_overview', {});
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { friendships: r.json || [] });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/friends/code') {
+      const mine = url.searchParams.get('child') || '';
+      const r = await rpc('my_friend_code', { mine });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { code: r.json });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/friends/request') {
+      const { child = '', code = '' } = await readBody(req);
+      const clean = String(code).replace(/[^A-Za-z0-9]/g, '').slice(0, 12);
+      if (!clean) return json(res, 400, { error: 'A friend code is needed.' });
+      const r = await rpc('friend_request', { mine: child, code: clean });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      const row = (r.json || [])[0] || {};
+      return json(res, 200, { name: row.friend_name || '', status: row.friend_status || 'pending' });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/friends/accept') {
+      const { child = '', friend = '' } = await readBody(req);
+      // The client knows the FRIEND's child id; the function wants the friendship
+      // row. Ask for the list and find it, so the client never has to hold a
+      // friendship id it could only have got from us anyway.
+      const list = await rpc('friends_of', { mine: child });
+      if (!list.ok) { const f = rpcFail(list); return json(res, f.code, f); }
+      const row = (list.json || []).find(x => x.child_id === friend && x.direction === 'in');
+      if (!row) return json(res, 404, { error: 'There is no request from them to accept.' });
+      const r = await rpc('friend_accept', { mine: child, friendship_id: row.friendship_id || null });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { accepted: r.json === true });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/friends/remove') {
+      const { child = '', friend = '' } = await readBody(req);
+      const r = await rpc('friend_remove', { mine: child, other: friend });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { removed: r.json === true });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/friends/solved') {
+      const mine = url.searchParams.get('child') || '';
+      const puzzle = url.searchParams.get('puzzle') || '';
+      if (!puzzle) return json(res, 400, { error: 'Which puzzle?' });
+      const r = await rpc('friends_who_solved', { mine, puzzle });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { names: (r.json || []).map(x => x.name).filter(Boolean) });
+    }
+
+      return json(res, 404, { error: 'No such friends route.' });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   if (url.pathname.startsWith('/api/account')) {
     if (!SUPA_ON) {
       return json(res, 200, { enabled: false,
@@ -843,88 +967,24 @@ const server = http.createServer(async (req, res) => {
       const clean = String(name || '').trim().slice(0, 24);
       if (!clean) return json(res, 400, { error: 'A name is needed.' });
       const row = { name: clean, progress: progress && typeof progress === 'object' ? progress : {} };
-      if (Number.isFinite(Number(grade))) { row.grade = Number(grade); row.grade_year = Number(gradeYear) || null; }
+      // `owner` is set explicitly rather than left to a column default. This is the
+      // fix for a real 42501: the policy is `with check (auth.uid() = owner)`, the
+      // insert never named an owner, so it landed NULL, `auth.uid() = NULL` is NULL
+      // rather than true, and every save was refused. The error reads like a
+      // permissions problem and is a missing value.
+      const owner = subjectOf(bearer);
+      if (!owner) return json(res, 401, { error: 'Sign in again.' });
+      row.owner = owner;
+      // Number(null) is 0, which is finite — so a child with no school year was
+      // being filed as Kindergarten rather than as "not set".
+      if (grade !== null && grade !== undefined && grade !== '' && Number.isFinite(Number(grade))) {
+        row.grade = Number(grade);
+        row.grade_year = Number(gradeYear) || null;
+      }
       const r = await supa('/rest/v1/child', { method: 'POST', token: bearer,
         headers: { Prefer: 'return=representation' }, body: row });
-      return json(res, r.ok ? 200 : 502, r.ok ? { child: (r.json || [])[0] } : { error: 'Could not save.', detail: r.body });
-    }
-
-    /* --------------------------------- friends -------------------------------- */
-    // Every one of these is a call to a SECURITY DEFINER function, carrying the
-    // PARENT'S OWN token. The function checks that `mine` really is their child
-    // before it does anything, so a forged child id gets an exception rather than
-    // someone else's friends. The `child` table's own policy is untouched: there
-    // is still no way for one family to read another family's row directly.
-    const rpc = (fn, args) => supa(`/rest/v1/rpc/${fn}`, { method: 'POST', token: bearer, body: args });
-    const rpcFail = r => {
-      const detail = String(r.body || '');
-      if (/no such code/.test(detail)) return { code: 404, error: 'No player has that code.' };
-      if (/that is you/.test(detail)) return { code: 400, error: 'That is your own code.' };
-      if (/not your player/.test(detail)) return { code: 403, error: 'That is not one of your players.' };
-      return { code: 502, error: 'Could not do that just now.', detail };
-    };
-
-    if (req.method === 'GET' && url.pathname === '/api/friends') {
-      const mine = url.searchParams.get('child') || '';
-      const r = await rpc('friends_of', { mine });
-      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
-      return json(res, 200, { friends: r.json || [] });
-    }
-
-    // Everyone on the account at once — what a parent reviewing friendships needs.
-    // Scoped by auth.uid() inside the function, so it takes no child id and cannot
-    // be pointed at another family.
-    if (req.method === 'GET' && url.pathname === '/api/friends/overview') {
-      const r = await rpc('friends_overview', {});
-      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
-      return json(res, 200, { friendships: r.json || [] });
-    }
-
-    if (req.method === 'GET' && url.pathname === '/api/friends/code') {
-      const mine = url.searchParams.get('child') || '';
-      const r = await rpc('my_friend_code', { mine });
-      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
-      return json(res, 200, { code: r.json });
-    }
-
-    if (req.method === 'POST' && url.pathname === '/api/friends/request') {
-      const { child = '', code = '' } = await readBody(req);
-      const clean = String(code).replace(/[^A-Za-z0-9]/g, '').slice(0, 12);
-      if (!clean) return json(res, 400, { error: 'A friend code is needed.' });
-      const r = await rpc('friend_request', { mine: child, code: clean });
-      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
-      const row = (r.json || [])[0] || {};
-      return json(res, 200, { name: row.friend_name || '', status: row.friend_status || 'pending' });
-    }
-
-    if (req.method === 'POST' && url.pathname === '/api/friends/accept') {
-      const { child = '', friend = '' } = await readBody(req);
-      // The client knows the FRIEND's child id; the function wants the friendship
-      // row. Ask for the list and find it, so the client never has to hold a
-      // friendship id it could only have got from us anyway.
-      const list = await rpc('friends_of', { mine: child });
-      if (!list.ok) { const f = rpcFail(list); return json(res, f.code, f); }
-      const row = (list.json || []).find(x => x.child_id === friend && x.direction === 'in');
-      if (!row) return json(res, 404, { error: 'There is no request from them to accept.' });
-      const r = await rpc('friend_accept', { mine: child, friendship_id: row.friendship_id || null });
-      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
-      return json(res, 200, { accepted: r.json === true });
-    }
-
-    if (req.method === 'POST' && url.pathname === '/api/friends/remove') {
-      const { child = '', friend = '' } = await readBody(req);
-      const r = await rpc('friend_remove', { mine: child, other: friend });
-      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
-      return json(res, 200, { removed: r.json === true });
-    }
-
-    if (req.method === 'GET' && url.pathname === '/api/friends/solved') {
-      const mine = url.searchParams.get('child') || '';
-      const puzzle = url.searchParams.get('puzzle') || '';
-      if (!puzzle) return json(res, 400, { error: 'Which puzzle?' });
-      const r = await rpc('friends_who_solved', { mine, puzzle });
-      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
-      return json(res, 200, { names: (r.json || []).map(x => x.name).filter(Boolean) });
+      if (!r.ok) console.error('[add child failed]', r.status, r.body);
+      return json(res, r.ok ? 200 : 502, r.ok ? { child: (r.json || [])[0] } : { error: whySupabase(r), detail: r.body });
     }
 
     const m = /^\/api\/account\/children\/([0-9a-f-]{36})$/.exec(url.pathname);
@@ -935,7 +995,9 @@ const server = http.createServer(async (req, res) => {
       if (progress && typeof progress === 'object') patch.progress = progress;
       // null clears the school year; undefined leaves it alone.
       if (grade === null) { patch.grade = null; patch.grade_year = null; }
-      else if (Number.isFinite(Number(grade))) { patch.grade = Number(grade); patch.grade_year = Number(gradeYear) || null; }
+      else if (grade !== undefined && grade !== '' && Number.isFinite(Number(grade))) {
+        patch.grade = Number(grade); patch.grade_year = Number(gradeYear) || null;
+      }
       // Ask for the row back. Row level security refuses another family's row by
       // matching NOTHING rather than by erroring, so a 200 with an empty array is
       // a refused write. Reporting that as success would lose a child's progress

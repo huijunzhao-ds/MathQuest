@@ -128,10 +128,17 @@ export async function children() {
   return r.ok && r.json ? (r.json.children || []) : null;   // null means "could not tell"
 }
 
+// Returns the child, or null. `lastAddError` carries WHY, because "1 did not go
+// up" with no reason is a message that wastes the reader's evening.
+export let lastAddError = '';
 export async function addChild(name, progress, { grade, gradeYear } = {}) {
   const r = await call('/api/account/children',
     { method: 'POST', body: JSON.stringify({ name, progress, grade, gradeYear }) });
-  return r.ok && r.json ? r.json.child : null;
+  if (r.ok && r.json && r.json.child) { lastAddError = ''; return r.json.child; }
+  lastAddError = (r.json && r.json.error)
+    || (r.offline ? 'No connection to the server.' : `The server said ${r.status}.`);
+  if (r.json && r.json.detail) console.error('[accounts] add child failed:', r.json.detail);
+  return null;
 }
 
 // grade and gradeYear were missing from this destructure, so the school year a

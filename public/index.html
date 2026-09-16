@@ -107,7 +107,8 @@
       <p class="starkey" id="friendIntro">Swap codes with a friend and you can see how each
          other is getting on. Both of you have to say yes.</p>
       <div class="askfriend" id="askFriend">
-        <input id="friendCodeIn" placeholder="Your friend's code" maxlength="12"
+        <label class="vh" for="friendCodeIn">Your friend's code</label>
+        <input id="friendCodeIn" name="friendCode" placeholder="Your friend's code" maxlength="12"
                autocomplete="off" autocapitalize="characters" spellcheck="false">
         <button class="primary" id="friendAdd">Add friend</button>
       </div>
@@ -193,15 +194,17 @@
         </button>
         <div class="orline hidden" id="pOr"><span>or</span></div>
 
-        <div class="authform" id="pForm">
-          <input id="pEmail" type="email" placeholder="your@email.com" autocomplete="email">
-          <input id="pPass" type="password" placeholder="Password — at least 8 characters"
+        <form class="authform" id="pForm" autocomplete="on" onsubmit="return false">
+          <label class="vh" for="pEmail">Email address</label>
+          <input id="pEmail" name="email" type="email" placeholder="your@email.com" autocomplete="email">
+          <label class="vh" for="pPass">Password</label>
+          <input id="pPass" name="password" type="password" placeholder="Password — at least 8 characters"
                  autocomplete="current-password">
           <div class="authbtns">
-            <button class="primary" id="pSignIn">Sign in</button>
-            <button class="ghost" id="pSignUp">Create an account</button>
+            <button class="primary" type="submit" id="pSignIn">Sign in</button>
+            <button class="ghost" type="button" id="pSignUp">Create an account</button>
           </div>
-        </div>
+        </form>
         <p class="pnote" id="pMsg"></p>
         <p class="pnote"><button class="linkish" id="pLinkInstead">Or email me a sign-in link
           instead</button></p>
@@ -211,8 +214,10 @@
         <p class="pnote">Signed in as <b id="pWho"></b> <span id="pSync"></span></p>
         <div class="players" id="pPlayers"></div>
         <div class="whoadd">
-          <input id="pNewName" placeholder="Add a player — first name" maxlength="24" autocomplete="off">
-          <select id="pNewGrade" class="gradesel"></select>
+          <label class="vh" for="pNewName">New player's first name</label>
+          <input id="pNewName" name="playerName" placeholder="Add a player — first name" maxlength="24" autocomplete="off">
+          <label class="vh" for="pNewGrade">School year</label>
+          <select id="pNewGrade" name="playerGrade" class="gradesel"></select>
           <button class="primary" id="pAdd">Add</button>
         </div>
         <p class="pnote" id="pMsg2"></p>
@@ -247,7 +252,8 @@
          I will ask about the bits you leave out, then write it down for you.</p>
       <div class="chatlog" id="tellLog"></div>
       <div class="askrow">
-        <input id="tellInput" placeholder="Say it, or type it here&hellip;" autocomplete="off">
+        <label class="vh" for="tellInput">Tell Pip your puzzle</label>
+        <input id="tellInput" name="tellPuzzle" placeholder="Say it, or type it here&hellip;" autocomplete="off">
         <button class="tool mic hidden" id="tellMic" title="Say it out loud" aria-label="Say it out loud">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
         </button>
@@ -295,15 +301,15 @@
       <h2>3 &middot; The numbers</h2>
       <p class="starkey">Choosing numbers that make it interesting is most of the puzzle.</p>
       <div class="numrow">
-        <label id="labA">First number</label>
+        <label id="labA" for="numA">First number</label>
         <button class="stepper" data-step="a-">&minus;</button>
-        <input id="numA" type="number" min="1" max="100" value="4" inputmode="numeric">
+        <input id="numA" name="numA" type="number" min="1" max="100" value="4" inputmode="numeric">
         <button class="stepper" data-step="a+">+</button>
       </div>
       <div class="numrow">
-        <label id="labB">Second number</label>
+        <label id="labB" for="numB">Second number</label>
         <button class="stepper" data-step="b-">&minus;</button>
-        <input id="numB" type="number" min="1" max="100" value="6" inputmode="numeric">
+        <input id="numB" name="numB" type="number" min="1" max="100" value="6" inputmode="numeric">
         <button class="stepper" data-step="b+">+</button>
       </div>
     </div>
@@ -325,7 +331,8 @@
       <div class="levelup-num">🎁</div>
       <div class="levelup-label" id="shareTitle">Send it to a friend</div>
       <div class="levelup-sub" id="shareSub"></div>
-      <input id="shareLink" readonly onclick="this.select()">
+      <label class="vh" for="shareLink">The link to send</label>
+      <input id="shareLink" name="shareLink" readonly onclick="this.select()">
       <div class="chbtns">
         <button class="primary" id="shareCopy">Copy the link</button>
         <button class="ghost" id="shareDone">Done</button>
@@ -358,7 +365,8 @@
           <div class="eqrow">
             <div class="eqstrip empty" id="eqstrip"></div>
             <span class="eq-eq">=</span>
-            <input class="answer" id="answer" inputmode="numeric" autocomplete="off" placeholder="?">
+            <label class="vh" for="answer">Your answer</label>
+            <input class="answer" id="answer" name="answer" inputmode="numeric" autocomplete="off" placeholder="?">
           </div>
           <div class="ops" id="ops">
             <button class="op" data-op="+">+</button>
@@ -421,7 +429,8 @@
             </button>
           </div>
           <div class="askrow hidden" id="askrow">
-            <input id="askInput" placeholder="Ask Pip about a word…" autocomplete="off">
+            <label class="vh" for="askInput">Ask Pip something</label>
+            <input id="askInput" name="askPip" placeholder="Ask Pip about a word…" autocomplete="off">
             <button class="tool mic hidden" id="micBtn" title="Say it out loud" aria-label="Say it out loud">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
             </button>
@@ -439,7 +448,8 @@
     <div class="levelup-label">Who is playing?</div>
     <div class="whorow" id="whoList"></div>
     <div class="whoadd">
-      <input id="whoNew" placeholder="Add someone — first name" maxlength="24" autocomplete="off">
+      <label class="vh" for="whoNew">Add someone — first name</label>
+      <input id="whoNew" name="whoNew" placeholder="Add someone — first name" maxlength="24" autocomplete="off">
       <button class="primary" id="whoAdd">Add</button>
     </div>
     <div class="whofoot">
