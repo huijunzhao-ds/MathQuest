@@ -143,6 +143,50 @@ export async function saveChild(id, { name, progress, grade, gradeYear } = {}, o
   return r.ok;   // false is a real failure, and the caller must show it
 }
 
+/* --------------------------------- friends ---------------------------------- */
+// Every one of these needs a signed-in parent and a child id they own. The server
+// passes both to a database function that checks the claim before it does anything,
+// so a wrong id is an error rather than a window into another family.
+
+export async function friendCode(childId) {
+  const r = await call(`/api/friends/code?child=${encodeURIComponent(childId)}`);
+  return r.ok && r.json ? r.json.code : null;
+}
+
+export async function friends(childId) {
+  const r = await call(`/api/friends?child=${encodeURIComponent(childId)}`);
+  return r.ok && r.json ? (r.json.friends || []) : null;   // null means "could not tell"
+}
+
+/** Every friendship across every child on this account — for the parent view. */
+export async function friendsOverview() {
+  const r = await call('/api/friends/overview');
+  return r.ok && r.json ? (r.json.friendships || []) : null;
+}
+
+export async function askFriend(childId, code) {
+  const r = await call('/api/friends/request',
+    { method: 'POST', body: JSON.stringify({ child: childId, code }) });
+  return r.ok ? { ok: true, ...r.json } : { ok: false, error: (r.json && r.json.error) || 'Could not send that.' };
+}
+
+export async function acceptFriend(childId, friendId) {
+  const r = await call('/api/friends/accept',
+    { method: 'POST', body: JSON.stringify({ child: childId, friend: friendId }) });
+  return r.ok;
+}
+
+export async function removeFriend(childId, friendId) {
+  const r = await call('/api/friends/remove',
+    { method: 'POST', body: JSON.stringify({ child: childId, friend: friendId }) });
+  return r.ok;
+}
+
+export async function friendsWhoSolved(childId, puzzleId) {
+  const r = await call(`/api/friends/solved?child=${encodeURIComponent(childId)}&puzzle=${encodeURIComponent(puzzleId)}`);
+  return r.ok && r.json ? (r.json.names || []) : [];
+}
+
 export async function removeChild(id) {
   const r = await call(`/api/account/children/${id}`, { method: 'DELETE' });
   return r.ok;

@@ -1058,3 +1058,59 @@ button.tool.mic.listening { background: rgba(252,165,165,.18); border-color: rgb
 #tellPreview { font-size: 20px; line-height: 1.75; margin-top: 10px; }
 #tellDone { margin-top: 22px; border-top: 1px solid rgba(255,255,255,.09); padding-top: 4px; }
 #tellCard .askrow { display: flex; }
+
+/* --------------------------------- friends ---------------------------------- */
+.mycode { font-size: 13.5px; font-weight: 700; color: var(--ink-dim); white-space: nowrap; }
+.mycode b {
+  font-family: var(--font); font-size: 17px; letter-spacing: 1.5px; color: var(--gold);
+  margin-left: 5px; user-select: all;
+}
+.askfriend { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.askfriend input {
+  flex: 1 1 180px; font-family: var(--font); font-size: 17px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--ink); background: rgba(255,255,255,.06);
+  border: 2px solid rgba(255,255,255,.14); border-radius: 13px; padding: 10px 14px;
+}
+.askfriend input:focus { outline: none; border-color: var(--sky); }
+.askfriend input::placeholder { text-transform: none; letter-spacing: 0; font-size: 15px; color: var(--ink-dim); }
+
+.friendcard {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 13px 16px; margin-top: 10px; border-radius: 16px;
+  background: rgba(255,255,255,.05); border: 2px solid rgba(255,255,255,.11);
+}
+.friendcard.waiting { border-style: dashed; }
+.fcname { flex: 1 1 130px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.fcname b { font-family: var(--font); font-size: 17px; font-weight: 600; color: var(--ink); }
+.fctag {
+  padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
+  color: var(--ink-dim); background: rgba(255,255,255,.08);
+}
+.fcnums { display: flex; gap: 16px; }
+.fcnums span { display: flex; flex-direction: column; font-size: 11.5px; font-weight: 800; color: var(--ink-dim); }
+.fcnums b { font-family: var(--font); font-size: 19px; font-weight: 600; color: var(--ink); }
+.fcbtns { display: flex; gap: 8px; }
+.fcbtns button { font-size: 14px; padding: 7px 14px; min-width: 0; }
+
+.alsosolved {
+  display: flex; align-items: center; gap: 10px; margin-top: 14px;
+  padding: 10px 15px; border-radius: 14px; font-size: 14.5px; font-weight: 700;
+  color: var(--ink); background: rgba(110,231,183,.12); border: 2px solid rgba(110,231,183,.3);
+}
+
+/* ------------------- who the children have added (parent mode) --------------- */
+.newtag {
+  padding: 2px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
+  color: var(--on-sky); background: var(--sky); white-space: nowrap;
+}
+.pfriend {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.pfriend:last-child { border-bottom: none; }
+.pfriend.fresh { padding-left: 13px; border-left: 3px solid var(--sky); }
+.pfname { flex: 1 1 240px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15px; }
+.pfname b { font-family: var(--font); font-size: 16.5px; font-weight: 600; color: var(--ink); }
+.pfarrow { color: var(--ink-dim); font-weight: 700; font-size: 14px; }
+.pfwhen { flex: 0 0 auto; font-size: 12.5px; font-weight: 700; color: var(--ink-dim); }
+.pfriend button { font-size: 13.5px; padding: 6px 13px; min-width: 0; }

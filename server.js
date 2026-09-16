@@ -849,6 +849,84 @@ const server = http.createServer(async (req, res) => {
       return json(res, r.ok ? 200 : 502, r.ok ? { child: (r.json || [])[0] } : { error: 'Could not save.', detail: r.body });
     }
 
+    /* --------------------------------- friends -------------------------------- */
+    // Every one of these is a call to a SECURITY DEFINER function, carrying the
+    // PARENT'S OWN token. The function checks that `mine` really is their child
+    // before it does anything, so a forged child id gets an exception rather than
+    // someone else's friends. The `child` table's own policy is untouched: there
+    // is still no way for one family to read another family's row directly.
+    const rpc = (fn, args) => supa(`/rest/v1/rpc/${fn}`, { method: 'POST', token: bearer, body: args });
+    const rpcFail = r => {
+      const detail = String(r.body || '');
+      if (/no such code/.test(detail)) return { code: 404, error: 'No player has that code.' };
+      if (/that is you/.test(detail)) return { code: 400, error: 'That is your own code.' };
+      if (/not your player/.test(detail)) return { code: 403, error: 'That is not one of your players.' };
+      return { code: 502, error: 'Could not do that just now.', detail };
+    };
+
+    if (req.method === 'GET' && url.pathname === '/api/friends') {
+      const mine = url.searchParams.get('child') || '';
+      const r = await rpc('friends_of', { mine });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { friends: r.json || [] });
+    }
+
+    // Everyone on the account at once — what a parent reviewing friendships needs.
+    // Scoped by auth.uid() inside the function, so it takes no child id and cannot
+    // be pointed at another family.
+    if (req.method === 'GET' && url.pathname === '/api/friends/overview') {
+      const r = await rpc('friends_overview', {});
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { friendships: r.json || [] });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/friends/code') {
+      const mine = url.searchParams.get('child') || '';
+      const r = await rpc('my_friend_code', { mine });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { code: r.json });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/friends/request') {
+      const { child = '', code = '' } = await readBody(req);
+      const clean = String(code).replace(/[^A-Za-z0-9]/g, '').slice(0, 12);
+      if (!clean) return json(res, 400, { error: 'A friend code is needed.' });
+      const r = await rpc('friend_request', { mine: child, code: clean });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      const row = (r.json || [])[0] || {};
+      return json(res, 200, { name: row.friend_name || '', status: row.friend_status || 'pending' });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/friends/accept') {
+      const { child = '', friend = '' } = await readBody(req);
+      // The client knows the FRIEND's child id; the function wants the friendship
+      // row. Ask for the list and find it, so the client never has to hold a
+      // friendship id it could only have got from us anyway.
+      const list = await rpc('friends_of', { mine: child });
+      if (!list.ok) { const f = rpcFail(list); return json(res, f.code, f); }
+      const row = (list.json || []).find(x => x.child_id === friend && x.direction === 'in');
+      if (!row) return json(res, 404, { error: 'There is no request from them to accept.' });
+      const r = await rpc('friend_accept', { mine: child, friendship_id: row.friendship_id || null });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { accepted: r.json === true });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/friends/remove') {
+      const { child = '', friend = '' } = await readBody(req);
+      const r = await rpc('friend_remove', { mine: child, other: friend });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { removed: r.json === true });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/friends/solved') {
+      const mine = url.searchParams.get('child') || '';
+      const puzzle = url.searchParams.get('puzzle') || '';
+      if (!puzzle) return json(res, 400, { error: 'Which puzzle?' });
+      const r = await rpc('friends_who_solved', { mine, puzzle });
+      if (!r.ok) { const f = rpcFail(r); return json(res, f.code, f); }
+      return json(res, 200, { names: (r.json || []).map(x => x.name).filter(Boolean) });
+    }
+
     const m = /^\/api\/account\/children\/([0-9a-f-]{36})$/.exec(url.pathname);
     if (m && req.method === 'PUT') {
       const { name, progress, grade, gradeYear } = await readBody(req);

@@ -97,7 +97,12 @@ SUPABASE_ANON_KEY=eyJ...
    carries the signed-in parent's own token, so Postgres row level security decides what
    they can reach. Paste the REST URL by mistake and the server trims it for you.
 
-4. Optional extras. `AUTH_GOOGLE=1` adds Google sign-in (needs an OAuth client in Google
+4. **Friends.** Run `sql/02-friends.sql` and then `sql/03-parent-review.sql` in the same SQL
+   editor. Together they add a friend code to each child, a `friendship` table, and the
+   functions that let friends see each other and a parent review what their children have
+   done. Neither changes the policy on `child`: see *Friends* below for why that matters.
+
+5. Optional extras. `AUTH_GOOGLE=1` adds Google sign-in (needs an OAuth client in Google
    Cloud with `https://<project>.supabase.co/auth/v1/callback` as the redirect, and the
    provider enabled in Supabase). For the emailed-link option to work, add your origin to
    **Authentication → URL Configuration → Redirect URLs** as `http://localhost:5173/**`.
@@ -821,6 +826,73 @@ Found while doing it: **`cloud.js` was dropping the school year.** `saveChild` d
 `{ name, progress }`, so `grade` and `gradeYear` never went into the request body — even though
 every caller passed them and the server had always accepted them. A school year set on one
 device stayed on that device. Fixed in the same place it was lost.
+
+## Shipped on 15 Sept — friends, properly
+
+Two children can now friend each other and see how the other is getting on. The tester asked
+for it because kids love it, and he is right — but it is also the change most capable of
+leaking every family's data, so the shape of it is almost entirely a safety argument.
+
+### The policy on `child` does not move
+
+The obvious way to let Ava see Sam's progress is to loosen the row level security on `child`
+from *own children only* to something that also allows friends. That is one policy expression
+standing between every family's data and the anon key, and it would be widened two days before
+other people's children use this.
+
+So it does not move. Everything a friend can see comes through **`SECURITY DEFINER` functions
+that return a fixed, narrow set of columns** and check the caller owns the child they claim on
+every call. `friends_of()` returns a name, a status, and three integers — solved, stars,
+planets — and the reduction to those three numbers happens **in the database**, so a wider blob
+cannot escape later by accident. The `friendship` table has no permissive policies at all:
+every route in and out is one of six functions, which is six places to be right instead of one
+place to be wrong.
+
+### Nobody can be found
+
+There is no directory and no search. Each child gets a **friend code** — eight characters, no
+vowels and no `0/O/1/I/l`, because it gets read aloud by one seven-year-old and typed by
+another, and it must not be able to spell anything. Possession of a code buys exactly one
+friend request, which still has to be accepted by the other side. A friendship exists only when
+both children have said yes: asking is not friending, and you cannot accept a request you sent
+yourself.
+
+### What a child sees
+
+- Each friend's **solved, stars and planets**. Listed, never ranked.
+- After solving a puzzle: **"Nia and Theo have done this one too."** This is the line the
+  tester's son will care about most, and it is the one most easily turned into a scoreboard, so
+  it names friends who have *also* solved it and never who solved it first, never how fast, and
+  never who has not. There is nothing in it for a child to be behind on.
+
+Matching on "who else solved this" needs a record of which puzzles a child has done.
+`solvedIds` is the permanent list and deliberately skips generated problems, of which there are
+5,280; `recent` is a new rolling list of the last 150, bounded because it rides inside every
+progress sync.
+
+### The parent can see all of it
+
+*Who they have added* is a card in parent mode listing every friendship across every child on
+the account, newest first, with anything added since that parent last looked marked **new** and
+a count on the card header. Removing one there removes it for both children.
+
+The question a parent has is "what is new since I last looked", not "list everything" — a list
+you have already read is noise, and noise is what makes people stop reading a safety surface.
+So the card leads with what changed. `friends_overview()` is scoped by `auth.uid()` inside the
+function, takes no child id, and deliberately returns **no progress numbers**: a parent
+reviewing who their child has befriended does not need another family's child's star count, and
+a function that does not select a column cannot leak it.
+
+**This is review, not approval.** A friendship is live as soon as both children say yes, and a
+parent can undo it afterwards. Making it a gate — the friend does not appear until a grown-up
+approves — is one more `status` value and one more function, and it is the right thing for a
+genuinely public launch. It is not what is built today, because a child waiting on a parent
+before their friend shows up is a different product, and that decision should be made
+deliberately rather than by me at midnight.
+
+Two smaller limits worth knowing: "since you last looked" is remembered per device, so checking
+on a laptop does not clear the badge on a phone; and the marks clear when the card renders, so
+a parent who opens the page and leaves without reading has spent them.
 
 ## To do
 

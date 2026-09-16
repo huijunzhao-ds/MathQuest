@@ -52,7 +52,24 @@ function wantedParents() {
   } catch { return false; }
 }
 const ME = Profiles.ensureProfile('Player 1');
+const RECENT_KEEP = 150;
+
+/**
+ * The three numbers a friend is allowed to see, kept in the progress blob so the
+ * database can read them without being handed the whole record. `friends_of()`
+ * reads exactly these and nothing else — so what a friend can learn is decided
+ * here and in the function signature, not by whatever happens to be in scope.
+ */
+function refreshTotals() {
+  P.totals = {
+    solved: Object.values(P.bands || {}).reduce((n, b) => n + (b.solved || 0), 0),
+    stars: totalStars(P, ORDER),
+    planets: ORDER.filter(k => worldUnlocked(P, k)).length
+  };
+}
+
 function save() {
+  refreshTotals();
   P.updatedAt = Date.now();
   Profiles.saveProgress(ME.id, P);
   cloudPush();
@@ -61,6 +78,8 @@ function save() {
 const blankProgress = () => ({
   xp: 0, streakDays: 0, bestStreak: 0, lastPlayed: null,
   concepts: {}, bands: null, testedOut: {}, solvedIds: [], misconceptions: {},
+  totals: { solved: 0, stars: 0, planets: 0 },  // the three numbers a friend may see
+  recent: [],     // ids of the last puzzles solved, so friends can be matched on them
   history: [],    // one summarised record per problem — how they worked, never what they wrote
   liked: [],      // puzzle ids this child gave a heart to
   friends: []     // names of people whose puzzles they have opened: [{name, seen}]
@@ -654,23 +673,128 @@ $('likedList').addEventListener('click', async e => {
   track('share-liked', entry.id);
 });
 
-function renderFriends() {
+// Friending is mutual and lives on the account, so it needs a signed-in parent.
+// Two children swap codes; each one asks, and a friendship exists only once both
+// sides have. Nobody can be searched for: a code is the whole way in, and it only
+// ever buys one request that still has to be said yes to.
+
+let friendCache = [];
+
+async function renderFriends() {
   const el = $('friendList');
-  const list = (P.friends || []).slice().sort((a, b) => b.seen - a.seen);
-  if (!list.length) {
-    el.innerHTML = '<span class="muted">Nobody yet — send a puzzle to someone and they can send one back.</span>';
+  const intro = $('friendIntro');
+
+  if (!Cloud.signedIn() || !ME.remote) {
+    $('myCode').textContent = '';
+    $('askFriend').classList.add('hidden');
+    intro.textContent = 'Friends need a grown-up to sign in first, because a friend list belongs to the account rather than to this laptop.';
+    // Names picked up from puzzle links still mean something, so they are still shown.
+    const seen = (P.friends || []).slice().sort((a, b) => b.seen - a.seen);
+    el.innerHTML = seen.length
+      ? `<p class="pnote">People who have sent you a puzzle:</p>` + seen.map(f =>
+          `<span class="friend"><b>${esc(f.name)}</b></span>`).join('')
+      : '<span class="muted">Nobody yet.</span>';
     return;
   }
-  el.innerHTML = list.map(f =>
-    `<span class="friend"><b>${esc(f.name)}</b><button data-drop="${esc(f.name)}" title="Forget">×</button></span>`
-  ).join('');
+
+  $('askFriend').classList.remove('hidden');
+  intro.textContent = 'Swap codes with a friend and you can see how each other is getting on. Both of you have to say yes.';
+
+  const code = await Cloud.friendCode(ME.remote);
+  $('myCode').innerHTML = code ? `Your code: <b>${esc(code)}</b>` : '';
+
+  const list = await Cloud.friends(ME.remote);
+  if (list === null) { el.innerHTML = '<span class="muted">Could not load your friends just now.</span>'; return; }
+  friendCache = list;
+
+  if (!list.length) {
+    el.innerHTML = '<span class="muted">No friends yet. Tell someone your code, and type theirs in above.</span>';
+    return;
+  }
+
+  const card = f => {
+    const waiting = f.status === 'pending';
+    const theirMove = waiting && f.direction === 'out';
+    return `<div class="friendcard ${waiting ? 'waiting' : ''}">
+      <div class="fcname"><b>${esc(f.name)}</b>${waiting
+        ? `<span class="fctag">${theirMove ? 'waiting for them' : 'wants to be friends'}</span>` : ''}</div>
+      ${waiting ? '' : `<div class="fcnums">
+        <span><b>${f.solved || 0}</b>solved</span>
+        <span><b>${f.stars || 0}</b>stars</span>
+        <span><b>${f.planets || 0}</b>planets</span>
+      </div>`}
+      <div class="fcbtns">
+        ${waiting && !theirMove ? `<button class="primary" data-accept="${esc(f.child_id)}">Yes!</button>` : ''}
+        <button class="ghost" data-unfriend="${esc(f.child_id)}">${waiting ? 'No thanks' : 'Remove'}</button>
+      </div>
+    </div>`;
+  };
+  el.innerHTML = list.map(card).join('');
 }
-$('friendList').addEventListener('click', e => {
-  const b = e.target.closest('[data-drop]');
-  if (!b) return;
-  P.friends = (P.friends || []).filter(f => f.name !== b.dataset.drop);
-  save(); renderFriends();
+
+$('friendAdd').onclick = async () => {
+  const input = $('friendCodeIn'), msg = $('friendMsg');
+  const code = input.value.trim();
+  if (!code) return input.focus();
+  msg.className = ''; msg.textContent = 'Asking…';
+  const r = await Cloud.askFriend(ME.remote, code);
+  if (!r.ok) { msg.className = 'bad'; msg.textContent = r.error; return; }
+  input.value = '';
+  msg.className = 'good';
+  msg.textContent = r.status === 'accepted'
+    ? `You and ${r.name} are friends!`             // they had already asked us
+    : `Asked ${r.name}. They have to say yes too.`;
+  renderFriends();
+};
+$('friendCodeIn').onkeydown = e => { if (e.key === 'Enter') $('friendAdd').click(); };
+
+$('friendList').addEventListener('click', async e => {
+  const yes = e.target.closest('[data-accept]');
+  const no = e.target.closest('[data-unfriend]');
+  if (yes) {
+    yes.disabled = true;
+    await Cloud.acceptFriend(ME.remote, yes.dataset.accept);
+    Sound.star();
+    // The last thing typed into the box has nothing to do with what just happened.
+    $('friendMsg').textContent = ''; $('friendMsg').className = '';
+    renderFriends();
+    return;
+  }
+  if (no) {
+    const f = friendCache.find(x => x.child_id === no.dataset.unfriend);
+    if (f && f.status === 'accepted' && !confirm(`Remove ${f.name}?`)) return;
+    no.disabled = true;
+    await Cloud.removeFriend(ME.remote, no.dataset.unfriend);
+    $('friendMsg').textContent = ''; $('friendMsg').className = '';
+    renderFriends();
+  }
 });
+
+/**
+ * "Nia and Theo have done this one too."
+ *
+ * The single most motivating line in the app, and the one most easily turned into a
+ * scoreboard. So it names friends who have ALSO solved it and never who solved it
+ * first, never how fast, and never who has not. There is nothing here for a child
+ * to be behind on.
+ */
+async function showFriendsWhoSolved(p) {
+  const line = $('alsoSolved');
+  if (!line) return;
+  line.classList.add('hidden');
+  if (!p || p.authored || !Cloud.signedIn() || !ME.remote) return;
+  let names = [];
+  try { names = await Cloud.friendsWhoSolved(ME.remote, p.id); } catch { return; }
+  if (!names.length) return;
+  // Still on the same problem? An answer that arrives after they have moved on
+  // belongs to a puzzle that is no longer on screen.
+  if (!state.current || state.current.id !== p.id) return;
+  const list = names.length === 1 ? names[0]
+    : names.length === 2 ? `${names[0]} and ${names[1]}`
+    : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+  line.innerHTML = `<span>👋</span><span>${esc(list)} ${names.length === 1 ? 'has' : 'have'} done this one too.</span>`;
+  line.classList.remove('hidden');
+}
 
 /* ============================== WHO IS PLAYING ================================ */
 // Switching child must be one tap from the header. After a switch the page is
@@ -908,6 +1032,7 @@ function showParents() {
   if (!open) { renderGate(); setTimeout(() => $('gateA').focus(), 50); return; }
   renderParents();
   renderReport();
+  renderParentFriends();
 }
 
 /* ------------------------------- the report --------------------------------- */
@@ -992,6 +1117,92 @@ function renderReport() {
 
 
 }
+
+/* ------------------------ who the children have added ------------------------ */
+// A parent asked for this, and the thing they actually want to know is "what is new
+// since I last looked" rather than "list everything" — a list you have already read
+// is noise, and noise is what makes people stop reading a safety surface.
+//
+// This is review, not approval: a friendship is live as soon as both children say
+// yes, and a parent can undo it. Making it a gate would mean a child waiting on a
+// grown-up before their friend appears, which is a different product decision and
+// is written up in the README rather than assumed here.
+
+const LAST_SEEN_KEY = 'mq.friendsSeen';
+const lastFriendCheck = () => { try { return Number(localStorage.getItem(LAST_SEEN_KEY)) || 0; } catch { return 0; } };
+const markFriendsSeen = () => { try { localStorage.setItem(LAST_SEEN_KEY, String(Date.now())); } catch {} };
+
+const whenOf = f => Date.parse(f.accepted_at || f.asked_at || 0) || 0;
+
+function friendAgo(ms) {
+  if (!ms) return '';
+  const mins = Math.round((Date.now() - ms) / 60000);
+  if (mins < 60) return mins <= 1 ? 'just now' : `${mins} minutes ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return hours === 1 ? 'an hour ago' : `${hours} hours ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? 'yesterday' : `${days} days ago`;
+}
+
+async function renderParentFriends() {
+  const card = $('pFriendsCard'), el = $('pFriendList'), tag = $('pFriendNew');
+  if (!card) return;
+  tag.classList.add('hidden');
+
+  if (!Cloud.signedIn()) {
+    $('pFriendNote').textContent = 'Sign in below and any friendships your children make will be listed here.';
+    el.innerHTML = '';
+    return;
+  }
+
+  const rows = await Cloud.friendsOverview();
+  if (rows === null) { el.innerHTML = '<p class="pnote bad">Could not load friendships just now.</p>'; return; }
+
+  const since = lastFriendCheck();
+  const fresh = rows.filter(f => whenOf(f) > since);
+  if (fresh.length) {
+    tag.textContent = `${fresh.length} new`;
+    tag.classList.remove('hidden');
+  }
+
+  if (!rows.length) {
+    el.innerHTML = '<p class="pnote">No friendships yet. A child adds one by swapping an eight-letter code with a friend — nobody can be searched for or added without both children agreeing.</p>';
+    markFriendsSeen();
+    return;
+  }
+
+  // Newest first, because that is the question being asked.
+  el.innerHTML = rows.map(f => {
+    const isNew = whenOf(f) > since;
+    const pending = f.status === 'pending';
+    return `<div class="pfriend ${isNew ? 'fresh' : ''}">
+      <div class="pfname">
+        <b>${esc(f.my_child_name)}</b>
+        <span class="pfarrow">${pending ? (f.direction === 'in' ? 'was asked by' : 'asked') : 'is friends with'}</span>
+        <b>${esc(f.friend_name)}</b>
+        ${isNew ? '<span class="newtag">new</span>' : ''}
+      </div>
+      <div class="pfwhen">${pending ? 'not accepted yet · ' : ''}${esc(friendAgo(whenOf(f)))}</div>
+      <button class="ghost" data-pfremove="${esc(f.my_child_id)}|${esc(f.friend_id)}">Remove</button>
+    </div>`;
+  }).join('');
+
+  // Seen now. Marked AFTER rendering, so this visit's "new" flags are the ones the
+  // parent is actually looking at rather than ones cleared before they loaded.
+  markFriendsSeen();
+}
+
+$('pFriendList').addEventListener('click', async e => {
+  const b = e.target.closest('[data-pfremove]');
+  if (!b) return;
+  const [mine, friend] = b.dataset.pfremove.split('|');
+  const row = b.closest('.pfriend');
+  const who = row ? row.querySelectorAll('b')[1]?.textContent : 'this friend';
+  if (!confirm(`Remove ${who}? They will disappear from both children's friend lists.`)) return;
+  b.disabled = true;
+  await Cloud.removeFriend(mine, friend);
+  renderParentFriends();
+});
 
 $('rPick').addEventListener('change', e => { reportFor = e.target.value; renderReport(); });
 
@@ -1528,6 +1739,7 @@ function loadProblem(p) {
   state.current = p;
   state.recorded = false;
   state.eq = []; state.trace = [];
+  $('alsoSolved') && $('alsoSolved').classList.add('hidden');
   state.attempts = 0; state.usedHelp = false; state.startStep = 0; state.slips = 0;
   state.lastDiag = null;
   $('answer').value = '';
@@ -1979,6 +2191,14 @@ function onCorrect(diag) {
   if (clean) st.firstTry++;
   if (bStat && !practice) { bStat.solved++; if (clean) bStat.firstTry++; }
   if (!state.current.generated && !P.solvedIds.includes(state.current.id)) P.solvedIds.push(state.current.id);
+  // `solvedIds` is the permanent record and deliberately skips generated problems,
+  // of which there are 5,280. `recent` is the short rolling list a friend can be
+  // matched against — bounded, because it rides inside every progress sync.
+  if (!state.current.authored) {
+    P.recent = (P.recent || []).filter(id => id !== state.current.id);
+    P.recent.push(state.current.id);
+    if (P.recent.length > RECENT_KEEP) P.recent = P.recent.slice(-RECENT_KEEP);
+  }
   save();
 
   state.combo = clean ? state.combo + 1 : 0;
@@ -2005,6 +2225,7 @@ function onCorrect(diag) {
 
   awardXp(practice ? XP.practice : clean ? XP.firstTry : XP.afterRetry);
   renderHeader();
+  showFriendsWhoSolved(state.current);
 
   // Testing out of a level: only first-try solves count, so it cannot be ground out.
   let challengeWon = false;

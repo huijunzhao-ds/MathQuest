@@ -100,8 +100,18 @@
     </div>
 
     <div class="card">
-      <h2>Friends</h2>
-      <p class="starkey">A name turns up here when that friend sends you a puzzle.</p>
+      <div class="cardhead">
+        <h2>Friends</h2>
+        <span class="mycode" id="myCode"></span>
+      </div>
+      <p class="starkey" id="friendIntro">Swap codes with a friend and you can see how each
+         other is getting on. Both of you have to say yes.</p>
+      <div class="askfriend" id="askFriend">
+        <input id="friendCodeIn" placeholder="Your friend's code" maxlength="12"
+               autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button class="primary" id="friendAdd">Add friend</button>
+      </div>
+      <p class="pnote" id="friendMsg"></p>
       <div id="friendList" class="friendlist"></div>
     </div>
    </div>
@@ -150,6 +160,16 @@
           says what the child is doing and why it makes sense to them &mdash; that second part is
           usually the useful bit at the kitchen table.</p>
         <div id="rMiss"></div>
+      </div>
+
+      <div class="card" id="pFriendsCard">
+        <div class="cardhead">
+          <h2>Who they have added</h2>
+          <span class="newtag hidden" id="pFriendNew"></span>
+        </div>
+        <p class="pnote" id="pFriendNote">Friendships your children have made. Anything added
+          since you last looked is marked. Removing one here removes it for both children.</p>
+        <div id="pFriendList"></div>
       </div>
 
       <div class="card">
@@ -351,6 +371,7 @@
             <button class="op util" data-util="clear">Clear</button>
           </div>
 
+          <div class="alsosolved hidden" id="alsoSolved"></div>
           <div class="ribbon hidden" id="ribbon"><span id="ribbonText"></span></div>
           <div class="actions" id="actions">
             <button class="primary" id="check">Check my thinking</button>
