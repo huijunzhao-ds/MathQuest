@@ -758,8 +758,17 @@ const server = http.createServer(async (req, res) => {
         return { code: 503, error: 'The friends functions exist but are not granted to signed-in users. Re-run sql/setup.sql.' };
       if (/does not exist/i.test(detail))
         return { code: 503, error: 'A friends function is missing. Run sql/setup.sql in Supabase.' };
+      // The three that are neither a missing function nor a bad claim, and that
+      // all used to arrive as the same shrug.
+      if (/JWT|jwt expired|invalid claim|PGRST30[0-9]/i.test(detail))
+        return { code: 401, error: 'This sign-in has expired. Sign out and sign in again.', detail };
+      if (/invalid input syntax for type uuid/i.test(detail))
+        return { code: 400, error: 'That player has not been saved to the account yet, so it has no friend code. Save them first.', detail };
+      if (/best candidate|is not unique|PGRST203/i.test(detail))
+        return { code: 503, error: 'There is more than one copy of a friends function. Re-run sql/setup.sql.', detail };
       console.error('[friends rpc failed]', r.status, detail.slice(0, 300));
-      return { code: 502, error: 'Could not do that just now.', detail };
+      // Pre-launch, an unrecognised failure says so in full rather than politely.
+      return { code: 502, error: `The database refused that (${r.status}).`, detail };
     };
 
     if (req.method === 'GET' && url.pathname === '/api/friends') {

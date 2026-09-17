@@ -686,6 +686,16 @@ $('likedList').addEventListener('click', async e => {
 
 let friendCache = [];
 
+// A failed friends call, with the database's own sentence under it. That second
+// line is not for a parent — it is for whoever is fixing this at 1am, and it is
+// the difference between "could not" and knowing which of six things broke.
+function friendFailHtml(fallback) {
+  const msg = esc(Cloud.lastFriendError || fallback);
+  const detail = Cloud.lastFriendDetail
+    ? `<br><small class="muted" style="word-break:break-word">${esc(Cloud.lastFriendDetail)}</small>` : '';
+  return `<p class="pnote bad">${msg}${detail}</p>`;
+}
+
 async function renderFriends() {
   const el = $('friendList');
   const intro = $('friendIntro');
@@ -709,11 +719,11 @@ async function renderFriends() {
   const code = await Cloud.friendCode(ME.remote);
   $('myCode').innerHTML = code
     ? `Your code: <b>${esc(code)}</b>`
-    : `<span class="bad">${esc(Cloud.lastFriendError || 'No code yet.')}</span>`;
+    : friendFailHtml('No code yet.');
 
   const list = await Cloud.friends(ME.remote);
   if (list === null) {
-    el.innerHTML = `<p class="pnote bad">${esc(Cloud.lastFriendError || 'Could not load your friends just now.')}</p>`;
+    el.innerHTML = friendFailHtml('Could not load your friends just now.');
     return;
   }
   friendCache = list;
@@ -1170,7 +1180,7 @@ async function renderParentFriends() {
   // An empty list and a failed call are different things, and saying "could not
   // load" to a parent whose children simply have no friends yet is a small lie.
   if (rows === null) {
-    el.innerHTML = `<p class="pnote bad">${esc(Cloud.lastFriendError || 'Could not load friendships just now.')}</p>`;
+    el.innerHTML = friendFailHtml('Could not load friendships just now.');
     return;
   }
 

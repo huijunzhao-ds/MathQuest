@@ -158,24 +158,30 @@ export async function saveChild(id, { name, progress, grade, gradeYear } = {}, o
 // Every friends call parks WHY it failed here. Three separate bugs in this app
 // have now been "it silently does nothing", and each one cost an evening.
 export let lastFriendError = '';
+// And the database's own words, kept separately so the card can show them. Three
+// bugs in this app have been "it silently does nothing", and the last one cost a
+// day precisely because the one sentence that named the cause was thrown away
+// between Postgres and the screen.
+export let lastFriendDetail = '';
 const friendFail = r => {
   lastFriendError = (r.json && r.json.error)
     || (r.offline ? 'No connection to the server.' : `The server said ${r.status}.`);
-  if (r.json && r.json.detail) console.error('[friends]', r.json.detail);
+  lastFriendDetail = (r.json && r.json.detail) ? String(r.json.detail).slice(0, 300) : '';
+  if (lastFriendDetail) console.error('[friends]', lastFriendDetail);
   return null;
 };
 
 export async function friendCode(childId) {
   const r = await call(`/api/friends/code?child=${encodeURIComponent(childId)}`);
   if (!r.ok || !r.json) return friendFail(r);
-  lastFriendError = '';
+  lastFriendError = ''; lastFriendDetail = '';
   return r.json.code || null;
 }
 
 export async function friends(childId) {
   const r = await call(`/api/friends?child=${encodeURIComponent(childId)}`);
   if (!r.ok || !r.json) return friendFail(r);      // null means "could not tell"
-  lastFriendError = '';
+  lastFriendError = ''; lastFriendDetail = '';
   return r.json.friends || [];
 }
 
@@ -183,7 +189,7 @@ export async function friends(childId) {
 export async function friendsOverview() {
   const r = await call('/api/friends/overview');
   if (!r.ok || !r.json) return friendFail(r);
-  lastFriendError = '';
+  lastFriendError = ''; lastFriendDetail = '';
   return r.json.friendships || [];
 }
 
