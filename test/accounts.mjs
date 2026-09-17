@@ -47,7 +47,7 @@ console.log('  the parent id is read from a real token, and every broken one is 
 for (const [body, expect, what] of [
   ['new row violates row-level security policy for table "child"', /policy/i, 'an RLS refusal'],
   ['null value in column "owner" of relation "child" violates not-null', /who that player belongs to/i, 'a missing owner'],
-  ['column "friend_code" does not exist', /sql\/02-friends/i, 'the friends SQL not having been run'],
+  ['column "friend_code" does not exist', /sql\/setup/i, 'the friends SQL not having been run'],
   ['Could not find the table in the schema cache', /SQL files/i, 'a missing table'],
   ['duplicate key value violates unique constraint "child_pkey"', /already on the account/i, 'a duplicate']
 ]) {

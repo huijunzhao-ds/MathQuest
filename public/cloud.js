@@ -155,20 +155,36 @@ export async function saveChild(id, { name, progress, grade, gradeYear } = {}, o
 // passes both to a database function that checks the claim before it does anything,
 // so a wrong id is an error rather than a window into another family.
 
+// Every friends call parks WHY it failed here. Three separate bugs in this app
+// have now been "it silently does nothing", and each one cost an evening.
+export let lastFriendError = '';
+const friendFail = r => {
+  lastFriendError = (r.json && r.json.error)
+    || (r.offline ? 'No connection to the server.' : `The server said ${r.status}.`);
+  if (r.json && r.json.detail) console.error('[friends]', r.json.detail);
+  return null;
+};
+
 export async function friendCode(childId) {
   const r = await call(`/api/friends/code?child=${encodeURIComponent(childId)}`);
-  return r.ok && r.json ? r.json.code : null;
+  if (!r.ok || !r.json) return friendFail(r);
+  lastFriendError = '';
+  return r.json.code || null;
 }
 
 export async function friends(childId) {
   const r = await call(`/api/friends?child=${encodeURIComponent(childId)}`);
-  return r.ok && r.json ? (r.json.friends || []) : null;   // null means "could not tell"
+  if (!r.ok || !r.json) return friendFail(r);      // null means "could not tell"
+  lastFriendError = '';
+  return r.json.friends || [];
 }
 
 /** Every friendship across every child on this account — for the parent view. */
 export async function friendsOverview() {
   const r = await call('/api/friends/overview');
-  return r.ok && r.json ? (r.json.friendships || []) : null;
+  if (!r.ok || !r.json) return friendFail(r);
+  lastFriendError = '';
+  return r.json.friendships || [];
 }
 
 export async function askFriend(childId, code) {

@@ -13,5 +13,5 @@ npm-debug.log*
 /tmp/
 *.bak
 
-# to set up supabase
-sql/
+# Demo assets — working material, not part of the app
+demo/

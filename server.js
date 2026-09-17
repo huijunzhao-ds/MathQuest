@@ -452,7 +452,7 @@ const COMPOSE_SCHEMA = {
     ready: { type: 'boolean', description: 'true ONLY when the puzzle below is complete and solvable. false while anything is still missing.' },
     text:  { type: 'string', description: 'The finished story when ready, every number marked as [[6|what that number counts]]. Empty string when not ready.' },
     correct: { type: 'string', description: 'The equation that solves it, using ONLY numbers from the story, e.g. "2x6-2". Digits and + - x / ( ) only. Empty string when not ready.' },
-    trouble: { type: 'string', enum: ['', 'not-maths', 'no-numbers', 'impossible'], description: 'Empty normally. Set when the idea cannot become a puzzle, so the app can offer a way out.' }
+    trouble: { type: 'string', enum: ['none', 'not-maths', 'no-numbers', 'impossible'], description: '"none" normally. Set when the idea cannot become a puzzle, so the app can offer a way out. Never an empty string — an empty value inside an enum is rejected by some providers and takes the whole call down.' }
   },
   required: ['say', 'ready', 'text', 'correct', 'trouble']
 };
@@ -508,6 +508,7 @@ EXAMPLE OF THE WHOLE JOB:
          How many ice creams are left?"  correct: "2x6-2"
 
 WHEN IT CANNOT WORK:
+- Normally trouble="none".
 - Not a maths story at all ("a dragon fights a robot") — set trouble="not-maths", and ask them what
   they could COUNT in it. A dragon story with three dragons is a maths story.
 - They will not give you numbers after you have asked twice — trouble="no-numbers".
@@ -537,7 +538,7 @@ function whySupabase(r) {
   if (/null value in column "owner"/i.test(body))
     return 'The database would not say who that player belongs to. Sign out and back in.';
   if (/friend_code/i.test(body))
-    return 'The friend-code setup did not run. Run sql/02-friends.sql in Supabase.';
+    return 'The friend-code setup did not run. Run sql/setup.sql in Supabase.';
   if (/does not exist|schema cache/i.test(body))
     return 'The database is missing something the app expects — check the SQL files have all been run.';
   if (/duplicate key/i.test(body)) return 'That player is already on the account.';
@@ -747,6 +748,17 @@ const server = http.createServer(async (req, res) => {
       if (/no such code/.test(detail)) return { code: 404, error: 'No player has that code.' };
       if (/that is you/.test(detail)) return { code: 400, error: 'That is your own code.' };
       if (/not your player/.test(detail)) return { code: 403, error: 'That is not one of your players.' };
+      // The one that actually bites: PostgREST caches the list of functions, so a
+      // function created after it started is invisible until the cache is told to
+      // reload. It answers 404 "not found in the schema cache", which reads like a
+      // missing route and is really a stale cache.
+      if (/schema cache|Could not find the function/i.test(detail))
+        return { code: 503, error: 'The database has not picked up the friends functions yet. Run: notify pgrst, \'reload schema\';' };
+      if (/permission denied/i.test(detail))
+        return { code: 503, error: 'The friends functions exist but are not granted to signed-in users. Re-run sql/setup.sql.' };
+      if (/does not exist/i.test(detail))
+        return { code: 503, error: 'A friends function is missing. Run sql/setup.sql in Supabase.' };
+      console.error('[friends rpc failed]', r.status, detail.slice(0, 300));
       return { code: 502, error: 'Could not do that just now.', detail };
     };
 
@@ -1128,7 +1140,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/compose') {
     try {
       const { history = [], message = '' } = await readBody(req);
-      if (!aiAvailable(req)) return json(res, 200, { offline: true });
+      // Two different reasons to be offline, and a child should not be told the
+      // same thing for both: no key at all, or too many calls this minute.
+      if (!API_KEY) return json(res, 200, { offline: true, why: 'no-key' });
+      if (!aiAvailable(req)) return json(res, 200, { offline: true, why: 'busy' });
 
       const convo = (Array.isArray(history) ? history : []).slice(-20)
         .map(m => `${m.who === 'kid' ? 'CHILD' : 'PIP'}: ${String(m.text || '').slice(0, 400)}`)
@@ -1154,7 +1169,7 @@ now whole.`;
         return json(res, 200, { ...out, source: PROVIDER });
       } catch (e) {
         console.error('[ai compose failed]', e.message);
-        return json(res, 200, { offline: true, error: e.message });
+        return json(res, 200, { offline: true, error: e.message, provider: PROVIDER });
       }
     } catch (e) {
       return json(res, 500, { error: e.message });

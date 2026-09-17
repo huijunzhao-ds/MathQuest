@@ -60,26 +60,19 @@ are answered instantly and for free (see *Where the model is allowed to be in th
 Without this, players are kept in the browser and the grown-ups page says so. With it, a
 parent signs in and their children's progress follows them to any device.
 
-1. Create a project at [supabase.com](https://supabase.com), then run this in the SQL editor:
+1. Create a project at [supabase.com](https://supabase.com), open the SQL editor, and paste
+   in the whole of **`sql/setup.sql`**. That one script is the entire database: the `child`
+   table, the row level security policy that protects it, friend codes, the `friendship`
+   table, and the functions friends and parents see each other through.
 
-```sql
-create table public.child (
-  id uuid primary key default gen_random_uuid(),
-  owner uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  name text not null check (char_length(name) between 1 and 24),
-  grade smallint,
-  grade_year smallint,
-  progress jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-alter table public.child enable row level security;
-create policy "own children only" on public.child
-  for all using (auth.uid() = owner) with check (auth.uid() = owner);
-```
+   It is safe to run more than once. Every statement either creates what is missing or
+   leaves what is already there alone, so re-running it on a database that is already live
+   changes nothing and loses nothing. The last thing it prints is a list of checks; every
+   row should say `true`.
 
-   That last policy is the line that actually protects the data. Without it every row is
-   readable by anyone with the anon key.
+   The policy it creates — `own children only` — is the line that actually protects the
+   data. Without it every row is readable by anyone with the anon key, which is a public
+   value printed in the page source.
 
 2. **Authentication → Providers → Email → turn "Confirm email" OFF.** Left on, every new
    parent needs a confirmation email, and Supabase's built-in sender allows only **two an
@@ -97,10 +90,10 @@ SUPABASE_ANON_KEY=eyJ...
    carries the signed-in parent's own token, so Postgres row level security decides what
    they can reach. Paste the REST URL by mistake and the server trims it for you.
 
-4. **Friends.** Run `sql/02-friends.sql` and then `sql/03-parent-review.sql` in the same SQL
-   editor. Together they add a friend code to each child, a `friendship` table, and the
-   functions that let friends see each other and a parent review what their children have
-   done. Neither changes the policy on `child`: see *Friends* below for why that matters.
+4. **Friends** are already in `sql/setup.sql` — there is nothing else to run. It adds a
+   friend code to every child, a `friendship` table, and the functions that let friends see
+   each other and a parent review what their children have done. None of it changes the
+   policy on `child`: see *Friends* below for why that matters.
 
 5. Optional extras. `AUTH_GOOGLE=1` adds Google sign-in (needs an OAuth client in Google
    Cloud with `https://<project>.supabase.co/auth/v1/callback` as the redirect, and the
@@ -939,15 +932,20 @@ Fixed twice over, because either alone is enough and both together cannot fail:
 - **The server names the owner.** It reads the subject out of the parent's own token and sets
   `owner` on the row. The token is not verified there — row level security still decides
   everything — it is read only so the row can say whose it is.
-- **`sql/04-owner-default.sql`** adds `default auth.uid()` to the column, which is what the
-  schema in this README should have said all along. It now does.
+- **`default auth.uid()` on the column**, which is what the schema should have said all
+  along. `sql/setup.sql` sets it.
 - **`Number(null)` is `0`, and `0` is finite.** The guard on the school year tested whether the
   value was a number rather than whether it was set, so a child with no school year was being
   filed as being in Kindergarten. Both the insert and the update had it.
 
-`sql/check.sql` is a read-only query set for the next time the database refuses something: it
-shows whether `owner` has a default, whether the friend-code trigger attached, whether all the
-functions exist, and what policies are on `child`.
+`sql/check.sql` is read-only, for the next time the database refuses something. It answers in
+one table — one row per thing worth knowing, with an `ok` column that should read true all the
+way down: whether row level security is on, what policy is really on `child`, whether `owner`
+has a default, whether the friend-code trigger attached, whether all seven functions exist and
+a signed-in parent may call them, and whether `friendship` is still reachable only through
+them. It reads the system catalogues rather than the tables, so it answers even when the thing
+it is asking about is missing. When a row says false, the answer is nearly always to run
+`sql/setup.sql` again.
 
 Chrome's issues panel was also right about the sign-in form: a password field outside a `<form>`
 makes password managers behave badly, and seven fields had no label. The auth fields are a real

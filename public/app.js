@@ -411,14 +411,20 @@ async function tellSay(text) {
   Pip.set('idle');
 
   if (!out || out.offline) {
-    // No model, no conversation. Say so plainly and hand them the builder, which
-    // needs nothing and still lets them make something to send.
-    tellChat('pip', 'I cannot listen properly just now. You can still build a puzzle with the picker instead.');
-    showBuilder(true);
+    // No model, no conversation — but say WHICH no. "I cannot listen just now" for
+    // a rate limit, a missing key and a broken schema alike is how a live model
+    // with a working key spent a day looking absent.
+    if (out && out.error) console.error('[compose]', out.error, out.provider || '');
+    const why = !out ? 'I could not reach the server.'
+      : out.why === 'busy' ? 'A lot of people are talking to me at once.'
+      : out.why === 'no-key' ? 'My talking is switched off in this copy of the app.'
+      : 'Something went wrong at my end.';
+    tellChat('pip', `${why} You can still build a puzzle with the picker instead.`);
+    showBuilder(true, 'Pip cannot listen right now, so pick the shape, the words and the numbers instead.');
     return;
   }
   tellChat('pip', out.say || 'Tell me a bit more.');
-  if (out.trouble === 'not-maths' || out.trouble === 'no-numbers' || out.trouble === 'impossible') {
+  if (out.trouble && out.trouble !== 'none') {
     $('tellAgain').hidden = false;
   }
   if (out.ready && out.text && out.correct) {
@@ -701,10 +707,15 @@ async function renderFriends() {
   intro.textContent = 'Swap codes with a friend and you can see how each other is getting on. Both of you have to say yes.';
 
   const code = await Cloud.friendCode(ME.remote);
-  $('myCode').innerHTML = code ? `Your code: <b>${esc(code)}</b>` : '';
+  $('myCode').innerHTML = code
+    ? `Your code: <b>${esc(code)}</b>`
+    : `<span class="bad">${esc(Cloud.lastFriendError || 'No code yet.')}</span>`;
 
   const list = await Cloud.friends(ME.remote);
-  if (list === null) { el.innerHTML = '<span class="muted">Could not load your friends just now.</span>'; return; }
+  if (list === null) {
+    el.innerHTML = `<p class="pnote bad">${esc(Cloud.lastFriendError || 'Could not load your friends just now.')}</p>`;
+    return;
+  }
   friendCache = list;
 
   if (!list.length) {
@@ -1156,7 +1167,12 @@ async function renderParentFriends() {
   }
 
   const rows = await Cloud.friendsOverview();
-  if (rows === null) { el.innerHTML = '<p class="pnote bad">Could not load friendships just now.</p>'; return; }
+  // An empty list and a failed call are different things, and saying "could not
+  // load" to a parent whose children simply have no friends yet is a small lie.
+  if (rows === null) {
+    el.innerHTML = `<p class="pnote bad">${esc(Cloud.lastFriendError || 'Could not load friendships just now.')}</p>`;
+    return;
+  }
 
   const since = lastFriendCheck();
   const fresh = rows.filter(f => whenOf(f) > since);
@@ -1166,7 +1182,8 @@ async function renderParentFriends() {
   }
 
   if (!rows.length) {
-    el.innerHTML = '<p class="pnote">No friendships yet. A child adds one by swapping an eight-letter code with a friend — nobody can be searched for or added without both children agreeing.</p>';
+    el.innerHTML = '<p class="pnote">Nothing new since you last looked — none of your children have added a friend. '
+      + 'They add one by swapping an eight-letter code, so nobody can be found by searching, and both children have to agree.</p>';
     markFriendsSeen();
     return;
   }
