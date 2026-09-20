@@ -66,13 +66,33 @@ console.log('  every database complaint becomes something a parent can act on');
 // Number(null) is 0, which is finite. The guard has to test the value, not its
 // number-ness, or a child with no school year is filed as being in Kindergarten.
 const addBlock = src.slice(src.indexOf("req.method === 'POST' && url.pathname === '/api/account/children'"));
-const guard = addBlock.slice(0, addBlock.indexOf('supa('));
-if (!guard || guard.length > 2000) throw new Error('could not find the add-child handler');
+// Slice to the INSERT, not to the first supa() call of any kind. The handler now
+// looks for an existing child of the same name before it creates one, so "the
+// first request it makes" stopped being the insert — and this test broke on a
+// change it was never meant to be watching.
+const INSERT = "supa('/rest/v1/child', { method: 'POST'";
+const guard = addBlock.slice(0, addBlock.indexOf(INSERT));
+if (!guard || addBlock.indexOf(INSERT) < 0) throw new Error('could not find the add-child insert');
 if (!/grade !== null/.test(guard))
   fail('the add-child guard does not exclude a null school year, so it files as Kindergarten');
 if (!/row\.owner\s*=/.test(guard))
   fail('the add-child insert does not set owner explicitly');
 if (!fails.length) console.log('  a child with no school year is not quietly filed into Kindergarten');
+
+/* 4 --------------------------- one child per name, per account ---------------- */
+// Two devices that each held an unlinked "Robin" created him twice, and his
+// progress split across two rows that could never catch up with each other.
+if (!/existing:\s*true/.test(addBlock.slice(0, addBlock.indexOf(INSERT) + 400)))
+  fail('adding a child does not return an existing one of the same name, so it can be created twice');
+if (!/23505|duplicate key/i.test(addBlock.slice(0, 4000)))
+  fail('the add-child handler does not handle the unique index rejecting a race');
+
+const putBlock = src.slice(src.indexOf("m && req.method === 'PUT'"));
+if (!/progress->>updatedAt/.test(putBlock.slice(0, 4500)))
+  fail('a save is not guarded against overwriting newer progress — this is how an evening of work was lost');
+if (!/409/.test(putBlock.slice(0, 4500)))
+  fail('a refused save does not answer 409, so the client cannot tell "stale" from "broken"');
+if (!fails.length) console.log('  a child cannot exist twice, and a save cannot go backwards');
 
 if (fails.length) { console.error('\n  FAILED\n' + fails.map(f => '    - ' + f).join('\n')); process.exit(1); }
 console.log('\n  the account plumbing says what went wrong instead of swallowing it\n');

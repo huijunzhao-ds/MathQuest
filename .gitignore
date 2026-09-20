@@ -12,6 +12,3 @@ npm-debug.log*
 *.png.tmp
 /tmp/
 *.bak
-
-# Demo assets — working material, not part of the app
-demo/

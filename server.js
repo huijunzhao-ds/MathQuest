@@ -1002,9 +1002,38 @@ const server = http.createServer(async (req, res) => {
         row.grade = Number(grade);
         row.grade_year = Number(gradeYear) || null;
       }
+      // ONE CHILD PER NAME, PER ACCOUNT.
+      //
+      // Two devices that each had an unlinked "Robin" before either had synced
+      // would each create a row for him, and the account ended up holding the same
+      // seven-year-old twice with his progress split across two rows that could
+      // never catch up with each other. The browser now looks before it creates,
+      // but a browser is not where a rule like this can live: an older tab, a
+      // second device and a race between them all bypass it.
+      //
+      // So the server answers an existing child instead of making a second one.
+      // Not an error — the caller wanted a row for this child and there is one, so
+      // it gets that row's id and links to it.
+      const found = await supa(
+        `/rest/v1/child?select=id,name,grade,grade_year,progress,updated_at&name=ilike.${encodeURIComponent(clean)}`,
+        { token: bearer });
+      const twin = found.ok && Array.isArray(found.json)
+        ? found.json.find(k => String(k.name).trim().toLowerCase() === clean.toLowerCase())
+        : null;
+      if (twin) return json(res, 200, { child: twin, existing: true });
+
       const r = await supa('/rest/v1/child', { method: 'POST', token: bearer,
         headers: { Prefer: 'return=representation' }, body: row });
       if (!r.ok) console.error('[add child failed]', r.status, r.body);
+      // 23505 is the unique index in sql/setup.sql catching a race the check above
+      // cannot: two requests that both looked, both saw nothing, and both wrote.
+      if (!r.ok && /23505|duplicate key/i.test(String(r.body || ''))) {
+        const again = await supa(
+          `/rest/v1/child?select=id,name,grade,grade_year,progress,updated_at&name=ilike.${encodeURIComponent(clean)}`,
+          { token: bearer });
+        const row2 = again.ok && Array.isArray(again.json) ? again.json[0] : null;
+        if (row2) return json(res, 200, { child: row2, existing: true });
+      }
       return json(res, r.ok ? 200 : 502, r.ok ? { child: (r.json || [])[0] } : { error: whySupabase(r), detail: r.body });
     }
 
@@ -1014,6 +1043,28 @@ const server = http.createServer(async (req, res) => {
       const patch = { updated_at: new Date().toISOString() };
       if (typeof name === 'string' && name.trim()) patch.name = name.trim().slice(0, 24);
       if (progress && typeof progress === 'object') patch.progress = progress;
+
+      // A WRITE MUST NOT GO BACKWARDS.
+      //
+      // This save used to be unconditional, and it cost a child an evening's work:
+      // a laptop holding a stale copy overwrote the newer copy an iPad had just
+      // uploaded. Worse, the row's own `updated_at` is the time of the WRITE, so
+      // the clobbered row then looked like the freshest thing on the account while
+      // holding the oldest data — which poisons every later comparison too.
+      //
+      // `progress.updatedAt` is stamped by whichever device produced the data, so
+      // it describes the DATA rather than the request. Only a payload at least as
+      // new as the stored one is allowed to land.
+      //
+      // The filter does the comparison inside Postgres, so two devices saving at
+      // once cannot interleave a read and a write. `updatedAt` is Date.now() — a
+      // 13-digit millisecond count, fixed width until the year 2286 — so comparing
+      // it as text orders it exactly as comparing it as a number would.
+      let guard = '';
+      const incoming = patch.progress && Number(patch.progress.updatedAt);
+      if (Number.isFinite(incoming) && incoming > 0) {
+        guard = `&or=(progress->>updatedAt.is.null,progress->>updatedAt.lte.${incoming})`;
+      }
       // null clears the school year; undefined leaves it alone.
       if (grade === null) { patch.grade = null; patch.grade_year = null; }
       else if (grade !== undefined && grade !== '' && Number.isFinite(Number(grade))) {
@@ -1023,11 +1074,24 @@ const server = http.createServer(async (req, res) => {
       // matching NOTHING rather than by erroring, so a 200 with an empty array is
       // a refused write. Reporting that as success would lose a child's progress
       // silently, which is the worst way to lose it.
-      const r = await supa(`/rest/v1/child?id=eq.${m[1]}`, { method: 'PATCH', token: bearer,
+      const r = await supa(`/rest/v1/child?id=eq.${m[1]}${guard}`, { method: 'PATCH', token: bearer,
         headers: { Prefer: 'return=representation' }, body: patch });
       if (!r.ok) return json(res, 502, { error: 'Could not save.', detail: r.body });
       if (!Array.isArray(r.json) || r.json.length === 0) {
-        return json(res, 404, { error: 'That child is not on this account.' });
+        // Nothing matched. Either the row is not theirs — row level security
+        // refuses by matching nothing rather than by erroring — or the guard
+        // above refused a write that would have gone backwards. Those need
+        // different answers, so ask which it was. This costs a second request
+        // only on the rare failing path.
+        const cur = await supa(`/rest/v1/child?id=eq.${m[1]}&select=progress,updated_at`, { token: bearer });
+        const row = cur.ok && Array.isArray(cur.json) ? cur.json[0] : null;
+        if (!row) return json(res, 404, { error: 'That child is not on this account.' });
+        return json(res, 409, {
+          error: 'The account has newer progress for this player than this device does.',
+          stale: true,
+          progress: row.progress || {},
+          updated_at: row.updated_at
+        });
       }
       return json(res, 200, { saved: true, updated_at: r.json[0].updated_at });
     }

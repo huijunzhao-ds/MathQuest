@@ -878,10 +878,13 @@ function cloudPush() {
   pushTimer = setTimeout(async () => {
     pushTimer = null;
     syncState = 'saving'; renderSync();
-    const ok = await Cloud.saveChild(ME.remote, { progress: P });
+    const r = await Cloud.saveChild(ME.remote, { progress: P });
+    // Refused because the account is ahead of us? Then we are the stale one, and
+    // the right move is to take their copy rather than to keep pushing ours.
+    if (r && r.stale) { adoptProgress(r.progress); syncState = 'saved'; renderSync(); return; }
     // A failed save is never reported as a save. The local copy is untouched
     // either way, so nothing is lost — but the parent gets told.
-    syncState = ok ? 'saved' : 'failed'; renderSync();
+    syncState = (r && r.ok) ? 'saved' : 'failed'; renderSync();
   }, 1500);
 }
 
@@ -906,20 +909,48 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', cloudFlush);
 
-/** Take the account's copy only if it is genuinely newer than this device's. */
+/** Replace what is on screen with a copy that came from somewhere else. */
+function adoptProgress(progress) {
+  for (const k of Object.keys(P)) delete P[k];
+  Object.assign(P, migrate(Object.assign(blankProgress(), progress || {})));
+  Profiles.saveProgress(ME.id, P);                    // not save(): do not bump the clock
+  renderHeader();
+  if (!$('roadScreen').classList.contains('hidden')) renderRoad();
+}
+
+/**
+ * Reconcile this device with the account — in WHICHEVER direction is behind.
+ *
+ * This used to only ever pull, and it compared the ROW's `updated_at` against the
+ * local copy's `updatedAt`. Two different clocks answering two different
+ * questions: the row says when it was last WRITTEN, the progress says when the
+ * DATA was made. A device that wrote a stale copy left a row that looked fresh,
+ * so the newer device then decided IT was the one behind. That is how an evening
+ * of a seven-year-old's work went missing.
+ *
+ * So both sides are judged by `progress.updatedAt`, which travels with the data,
+ * and whichever side is behind gives way. The server enforces the same rule, so a
+ * device that gets this wrong is refused rather than believed.
+ */
 async function cloudPull() {
   if (!Cloud.signedIn() || !ME.remote) return;
   const kids = await Cloud.children();
   if (!kids) return;                                  // could not tell — leave local alone
   const mine = kids.find(k => k.id === ME.remote);
-  if (!mine || !mine.progress) return;
-  const cloudAt = Date.parse(mine.updated_at || 0) || 0;
-  if (cloudAt <= (P.updatedAt || 0)) return;
-  for (const k of Object.keys(P)) delete P[k];
-  Object.assign(P, migrate(Object.assign(blankProgress(), mine.progress)));
-  Profiles.saveProgress(ME.id, P);                    // not save(): do not bump the clock
-  renderHeader();
-  if (!$('roadScreen').classList.contains('hidden')) renderRoad();
+  if (!mine) return;
+
+  const theirs = Number((mine.progress || {}).updatedAt) || 0;
+  const ours = Number(P.updatedAt) || 0;
+
+  if (theirs > ours) return adoptProgress(mine.progress);
+
+  // We are ahead — the case that used to be silently lost, because nothing sent
+  // it. A row with no `updatedAt` was written before this rule existed, so ours
+  // wins by default.
+  if (ours > theirs) {
+    const r = await Cloud.saveChild(ME.remote, { progress: P });
+    if (r && r.stale) adoptProgress(r.progress);      // raced; they were ahead after all
+  }
 }
 
 /**
@@ -934,12 +965,38 @@ async function cloudPull() {
 async function cloudPushUp() {
   if (!Cloud.signedIn()) return 0;
   let sent = 0;
+  // Read the account ONCE up front. Two devices that each had an unlinked "Robin"
+  // before either had ever synced would each create a row for him, and the account
+  // ends up with the same child twice — which is confusing on the parent page and
+  // splits his progress across two rows that can never catch up with each other.
+  // So: adopt a row of the same name if there is one, and only create when there
+  // is genuinely nobody there.
+  const onAccount = (await Cloud.children()) || [];
+  const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+
   for (const p of Profiles.listProfiles()) {
     if (p.remote) continue;
     // An untouched "Player 1" is scaffolding, not a child. Uploading it would put
     // a placeholder on the account and then on every other device.
     const prog = Profiles.loadProgress(p.id) || {};
     if (p.auto && !Object.keys(prog).length) continue;
+
+    const taken = new Set(Profiles.listProfiles().map(x => x.remote).filter(Boolean));
+    const twin = onAccount.find(k => same(k.name, p.name) && !taken.has(k.id));
+    if (twin) {
+      Profiles.linkProfile(p.id, twin.id);
+      // Linked, not merged: whichever copy is newer wins, by the same rule as
+      // everywhere else. cloudPull does that on the next pass for the active
+      // child, and the guard on the server refuses a backwards write regardless.
+      if ((Number(prog.updatedAt) || 0) > (Number((twin.progress || {}).updatedAt) || 0)) {
+        await Cloud.saveChild(twin.id, { progress: prog });
+      } else {
+        Profiles.saveProgress(p.id, twin.progress || {});
+      }
+      sent++;
+      continue;
+    }
+
     const made = await Cloud.addChild(p.name, prog, { grade: p.grade, gradeYear: p.gradeYear });
     if (!made) { console.warn('[accounts] could not save player to the account:', Cloud.lastAddError); continue; }
     Profiles.linkProfile(p.id, made.id);
@@ -967,8 +1024,10 @@ async function cloudMergeDown() {
     if (twin) {
       Profiles.linkProfile(twin.id, k.id);
       const mine = Profiles.loadProgress(twin.id) || {};
-      const cloudAt = Date.parse(k.updated_at || 0) || 0;
-      if (cloudAt > (mine.updatedAt || 0)) {
+      // Same rule as cloudPull: judge by when the DATA was made, not by when the
+      // row happened to be written.
+      const cloudAt = Number((k.progress || {}).updatedAt) || 0;
+      if (cloudAt > (Number(mine.updatedAt) || 0)) {
         Profiles.saveProgress(twin.id, k.progress || {});
         if (twin.id === ME.id) touchedActive = true;
       }

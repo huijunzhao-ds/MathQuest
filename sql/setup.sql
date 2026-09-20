@@ -51,6 +51,32 @@ alter table public.child
 -- itself now; this is the belt to that pair of braces.
 alter table public.child alter column owner set default auth.uid();
 
+-- ONE CHILD PER NAME, PER ACCOUNT.
+--
+-- Two devices that each held an unlinked "Robin" before either had synced would
+-- each create a row for him. The account then held the same seven-year-old twice,
+-- with his progress split across two rows that could never catch up with each
+-- other, and a parent page listing the same first name twice.
+--
+-- The server checks before it inserts, but a check in application code loses a
+-- race between two devices by definition. This is the rule that actually holds.
+--
+-- Created only when it can be: a database that ALREADY has duplicates would fail
+-- the index and take the whole re-runnable script down with it. Those have to be
+-- merged by hand first — the notice says so rather than failing silently.
+do $$
+declare dupes int;
+begin
+  select count(*) into dupes from (
+    select owner, lower(name) from public.child group by 1, 2 having count(*) > 1
+  ) d;
+  if dupes > 0 then
+    raise notice 'Skipping the one-child-per-name index: % duplicate name(s) on this database. Merge them, then re-run this script.', dupes;
+  else
+    create unique index if not exists child_owner_name on public.child (owner, lower(name));
+  end if;
+end $$;
+
 alter table public.child enable row level security;
 
 -- The line that actually protects the data. Without it every row is readable by
@@ -383,6 +409,9 @@ union all select 'friendship is not directly readable',
 union all select 'owner fills itself in',
        (select column_default like '%auth.uid()%' from information_schema.columns
          where table_schema = 'public' and table_name = 'child' and column_name = 'owner')
+union all select 'one child per name, per account (merge duplicates and re-run if false)',
+       exists (select 1 from pg_indexes
+                where schemaname = 'public' and indexname = 'child_owner_name')
 union all select 'friend-code trigger attached',
        exists (select 1 from pg_trigger
                 where tgrelid = 'public.child'::regclass

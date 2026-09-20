@@ -144,10 +144,17 @@ export async function addChild(name, progress, { grade, gradeYear } = {}) {
 // grade and gradeYear were missing from this destructure, so the school year a
 // parent set on one device never left it: the server has always accepted them,
 // and every caller has always sent them.
+// A refused save is not the same as a broken one. The server answers 409 when the
+// account holds progress newer than what this device is offering — which is not an
+// error, it is the device being out of date — and hands back the newer copy so the
+// caller can take it instead of retrying a write that will never be allowed.
 export async function saveChild(id, { name, progress, grade, gradeYear } = {}, opts = {}) {
   const r = await call(`/api/account/children/${id}`,
     { method: 'PUT', body: JSON.stringify({ name, progress, grade, gradeYear }), ...opts });
-  return r.ok;   // false is a real failure, and the caller must show it
+  if (r.status === 409 && r.json && r.json.stale) {
+    return { ok: false, stale: true, progress: r.json.progress || {} };
+  }
+  return { ok: r.ok, stale: false };   // ok:false is a real failure, and the caller must show it
 }
 
 /* --------------------------------- friends ---------------------------------- */
