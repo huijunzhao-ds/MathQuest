@@ -1096,8 +1096,18 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { saved: true, updated_at: r.json[0].updated_at });
     }
     if (m && req.method === 'DELETE') {
-      const r = await supa(`/rest/v1/child?id=eq.${m[1]}`, { method: 'DELETE', token: bearer });
-      return json(res, r.ok ? 200 : 502, r.ok ? { removed: true } : { error: 'Could not remove.' });
+      // Ask for the row back, the same way the PUT does. PostgREST answers a
+      // DELETE with success whether it removed one row or none, so without this
+      // a delete that row level security refused — or one aimed at a row that is
+      // not on this account — reported itself as done. The caller then forgot the
+      // child locally while the row lived on, and the next sync brought it back.
+      const r = await supa(`/rest/v1/child?id=eq.${m[1]}`, { method: 'DELETE', token: bearer,
+        headers: { Prefer: 'return=representation' } });
+      if (!r.ok) return json(res, 502, { error: 'Could not remove.', detail: r.body });
+      if (!Array.isArray(r.json) || r.json.length === 0) {
+        return json(res, 404, { error: 'That child is not on this account.' });
+      }
+      return json(res, 200, { removed: true });
     }
 
     return json(res, 404, { error: 'not found' });

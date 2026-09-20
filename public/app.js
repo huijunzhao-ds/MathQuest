@@ -833,7 +833,8 @@ function renderWho() {
     return `<button class="whoone ${p.id === ME.id ? 'on' : ''}" data-id="${p.id}">
       <span class="nm">${esc(p.name)}</span>
       <span class="st">${solved ? `${solved} solved` : 'not started'}</span>
-      ${list.length > 1 && p.id !== ME.id ? `<span class="rm" data-remove="${p.id}" title="Remove">&times;</span>` : ''}
+      ${list.length > 1 && p.id !== ME.id && !p.remote
+          ? `<span class="rm" data-remove="${p.id}" title="Remove">&times;</span>` : ''}
     </button>`;
   }).join('');
 
@@ -843,7 +844,17 @@ function renderWho() {
       if (rm) {
         e.stopPropagation();
         const p = Profiles.listProfiles().find(x => x.id === rm.dataset.remove);
-        if (p && confirm(`Remove ${p.name}? Their stars and progress go too.`)) {
+        // A player who is on the account cannot be removed from here. Deleting the
+        // local copy leaves the account's copy untouched, and the next reload pulls
+        // it straight back down — which looks exactly like the delete not working.
+        // Removing a child from the account is a grown-up's decision anyway, so it
+        // lives behind the gate in parent mode.
+        if (p && p.remote) {
+          alert(`${p.name} is saved to your account, so removing them here would not stick.\n\n`
+              + 'A grown-up can remove them in Parent mode.');
+          return;
+        }
+        if (p && confirm(`Remove ${p.name} from this device? Their stars and progress go too.`)) {
           Profiles.removeProfile(p.id); renderWho();
         }
         return;
@@ -1343,7 +1354,15 @@ async function renderParents() {
     if (rm) rm.onclick = async () => {
       const p = Profiles.listProfiles().find(x => x.id === id);
       if (!p || !confirm(`Remove ${p.name}? Their stars and progress go too.`)) return;
-      if (p.remote) await Cloud.removeChild(p.remote);
+      // The answer used to be thrown away. A delete the account refused still
+      // removed the local copy, so the child vanished, the row survived, and the
+      // next reload brought them back — indistinguishable from the button not
+      // working.
+      if (p.remote && !(await Cloud.removeChild(p.remote))) {
+        alert(`Could not remove ${p.name} from your account, so they are still here.\n\n`
+            + 'Check your connection and try again.');
+        return;
+      }
       Profiles.removeProfile(id);
       if (id === ME.id) return location.reload();
       renderParents();

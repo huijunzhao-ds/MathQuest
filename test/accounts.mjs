@@ -94,5 +94,23 @@ if (!/409/.test(putBlock.slice(0, 4500)))
   fail('a refused save does not answer 409, so the client cannot tell "stale" from "broken"');
 if (!fails.length) console.log('  a child cannot exist twice, and a save cannot go backwards');
 
+/* 5 -------------------------- a delete that did nothing says so --------------- */
+// PostgREST answers a DELETE with success whether it removed a row or none, so a
+// refused delete looked done: the child vanished locally, the row survived, and
+// the next sync brought them back.
+const delBlock = src.slice(src.indexOf("m && req.method === 'DELETE'"));
+if (!/return=representation/.test(delBlock.slice(0, 900)))
+  fail('the delete does not ask for the row back, so it cannot tell a refusal from a removal');
+if (!/404/.test(delBlock.slice(0, 900)))
+  fail('a delete that matched nothing does not answer 404');
+
+// And the browser must not forget a child the account still has.
+const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+if (!/!\(await Cloud\.removeChild/.test(app))
+  fail('parent mode removes the local profile without checking the account let go of it');
+if (/data-remove="\$\{p\.id\}"/.test(app) && !/!p\.remote\s*\n?\s*\?/.test(app))
+  fail('the child-facing picker still offers to remove a player that lives on the account');
+if (!fails.length) console.log('  removing a child means it is gone, or says it is not');
+
 if (fails.length) { console.error('\n  FAILED\n' + fails.map(f => '    - ' + f).join('\n')); process.exit(1); }
 console.log('\n  the account plumbing says what went wrong instead of swallowing it\n');
