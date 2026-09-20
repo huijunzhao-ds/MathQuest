@@ -15,13 +15,14 @@
     "gentest": "node test/generator.mjs",
     "viztest": "node --import ./test/dom-stub.mjs test/mathviz.mjs",
     "progtest": "node test/progress.mjs",
-    "test": "npm run gentest && npm run viztest && npm run progtest && npm run proftest && npm run sharetest && npm run insighttest && npm run pictest && npm run composetest && npm run accounttest && npm run routetest",
+    "test": "npm run gentest && npm run viztest && npm run progtest && npm run proftest && npm run sharetest && npm run insighttest && npm run pictest && npm run composetest && npm run accounttest && npm run routetest && npm run speechtest",
     "proftest": "node --import ./test/ls-stub.mjs test/profiles.mjs",
     "sharetest": "node test/share.mjs",
     "insighttest": "node test/insight.mjs",
     "pictest": "node test/picture.mjs",
     "composetest": "node test/compose.mjs",
     "accounttest": "node test/accounts.mjs",
-    "routetest": "node test/routes.mjs"
+    "routetest": "node test/routes.mjs",
+    "speechtest": "node test/speech.mjs"
   }
 }

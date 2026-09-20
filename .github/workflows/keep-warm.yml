@@ -1,0 +1,46 @@
+# Render's free tier puts a service to sleep after about fifteen minutes idle, and
+# waking it takes thirty seconds or more. A judge or a parent clicking the link
+# during that wait sees a blank page and concludes it is broken.
+#
+# So this pings the cheapest endpoint often enough that it never falls asleep.
+#
+# Two things worth knowing before relying on it:
+#
+#   - GitHub delays scheduled workflows under load, sometimes by a lot. The cron
+#     below asks for every ten minutes and will often be later than that. For
+#     something you actually depend on, an external pinger (cron-job.org,
+#     UptimeRobot — both free) is more punctual. This is the zero-signup option.
+#   - GitHub disables scheduled workflows on a public repo after 60 days with no
+#     commits. If the link matters months from now, check it is still enabled.
+#
+# Render's free tier allows 750 instance-hours a month and a month is roughly 730,
+# so ONE always-awake service fits inside the free allowance. A second one will
+# not.
+
+name: keep the demo awake
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:        # so you can prove it works without waiting
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the service
+        run: |
+          # /api/status is a few bytes of JSON and touches no database.
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 60 \
+                   https://mathquest-czoy.onrender.com/api/status || echo 000)
+            echo "attempt $attempt → HTTP $code"
+            if [ "$code" = "200" ]; then
+              cat /tmp/body; echo; exit 0
+            fi
+            sleep 20        # a cold start can take longer than the first timeout
+          done
+          echo "::warning::the demo did not answer 200 after three tries"
