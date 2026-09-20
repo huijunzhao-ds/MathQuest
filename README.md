@@ -9,12 +9,11 @@ hasn't met multiplication's notation yet — that is the moment the idea is teac
 it is the moment most software calls a mistake. MathQuest is built around catching moments
 like that.
 
-**▶ Play it:** <https://mathquest-czoy.onrender.com> · **Demo video:** _(link)_ ·
-**What it does, in one page:** [SUBMISSION.md](SUBMISSION.md)
+**▶ Play it:** <https://mathquest-czoy.onrender.com>
+**What it does, in one page:** (also the submission doc for a [hackathon](https://hackathon.nerdy.com/)) [SUBMISSION.md](SUBMISSION.md)
 
 Built with my seven-year-old, who play-tested every level, asked for about half the
-features, and found the bug where a puzzle claimed a child read 667 pages on a Monday.
-Submitted to the [Nerdy AI hackathon](https://hackathon.nerdy.com/), K–5 Math Game prompt.
+features.
 
 ---
 
@@ -207,8 +206,7 @@ Plain JavaScript, no build step. Deployed on [Render](https://render.com), datab
 | `public/mathviz.js` | The arithmetic pictures — drawn, never model-generated |
 | `sql/setup.sql` | The whole database, re-runnable |
 | `test/` | Twelve suites; `npm test` runs all but the leak test |
-| `docs/DESIGN.md` | Why it works the way it does |
-| `docs/HISTORY.md` | The day-by-day build log, bugs included |
+| `.github/workflows/keep-warm.yml` | Pings the demo so the free tier never sleeps |
 
 ---
 
